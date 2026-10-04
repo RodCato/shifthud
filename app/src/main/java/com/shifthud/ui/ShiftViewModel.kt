@@ -7,11 +7,11 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.time.*
 
-data class ShiftUiState(val schedule: List<ScheduledShift> = emptyList(), val session: WorkSession? = null, val threshold: Int = 360, val now: Instant = Instant.now(), val loaded: Boolean = false)
+data class ShiftUiState(val schedule: List<ScheduledShift> = emptyList(), val session: WorkSession? = null, val threshold: Int = 360, val now: Instant = Instant.now(), val loaded: Boolean = false, val warningOffsets: Set<Int> = com.shifthud.notification.DEFAULT_WARNING_OFFSETS)
 class ShiftViewModel(private val app: ShiftHudApplication) : ViewModel() {
     val engine = app.engine
     private val ticks = flow { while (true) { emit(Instant.now()); delay(1000) } }
-    val state = combine(app.repository.schedule, app.repository.latestSession, app.preferences.lunchThresholdMinutes, ticks) { schedule, session, threshold, now -> ShiftUiState(schedule, session, threshold, now, true) }
+    val state = combine(app.repository.schedule, app.repository.latestSession, app.preferences.warningSettings, ticks) { schedule, session, settings, now -> ShiftUiState(schedule, session, settings.threshold, now, true, settings.offsets) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ShiftUiState())
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
@@ -33,5 +33,6 @@ class ShiftViewModel(private val app: ShiftHudApplication) : ViewModel() {
     fun clockOut(s: WorkSession) = perform { app.repository.transition(s.id, s.state, engine::clockOut) }
     fun save(s: ScheduledShift, done: () -> Unit) = perform { app.repository.save(s); done() }
     fun delete(id: Long, done: () -> Unit) = perform { app.repository.delete(id); done() }
+    fun warning(offset: Int, enabled: Boolean) = perform { app.preferences.setWarningEnabled(offset, enabled) }
     fun threshold(minutes: Int, done: () -> Unit) = perform { app.preferences.setLunchThreshold(minutes); done() }
 }

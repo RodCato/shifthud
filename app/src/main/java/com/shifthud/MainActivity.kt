@@ -30,6 +30,7 @@ import com.shifthud.ui.settings.SettingsScreen
 import com.shifthud.ui.theme.ShiftHudTheme
 
 class MainActivity : ComponentActivity() {
+    private var explainNotifications by mutableStateOf(false)
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     override fun onStart() {
         super.onStart()
@@ -41,7 +42,7 @@ class MainActivity : ComponentActivity() {
         val prompts = getSharedPreferences("permission_prompts", MODE_PRIVATE)
         if (!prompts.getBoolean("active_notification_requested", false)) {
             prompts.edit { putBoolean("active_notification_requested", true) }
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            explainNotifications = true
         }
     }
     private var widgetDestination by mutableStateOf<String?>(null)
@@ -57,6 +58,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ShiftHudTheme {
+                if (explainNotifications) AlertDialog(
+                    onDismissRequest = { explainNotifications = false },
+                    title = { Text("Shift notifications") },
+                    text = { Text("Allow notifications to see ongoing shift progress and your personal lunch reminders. Tracking continues if you decline. You can change this in Settings.") },
+                    confirmButton = { TextButton(onClick = { explainNotifications = false; if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text("Continue") } },
+                    dismissButton = { TextButton(onClick = { explainNotifications = false }) { Text("Not now") } })
                 val vm: ShiftViewModel = viewModel(factory = object : ViewModelProvider.Factory {
                     @Suppress("UNCHECKED_CAST")
                     override fun <T : ViewModel> create(modelClass: Class<T>): T = ShiftViewModel(application as ShiftHudApplication) as T
