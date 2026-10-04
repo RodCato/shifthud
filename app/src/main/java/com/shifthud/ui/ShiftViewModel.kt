@@ -1,0 +1,37 @@
+package com.shifthud.ui
+
+import androidx.lifecycle.*
+import com.shifthud.ShiftHudApplication
+import com.shifthud.domain.model.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import java.time.*
+
+data class ShiftUiState(val schedule: List<ScheduledShift> = emptyList(), val session: WorkSession? = null, val threshold: Int = 360, val now: Instant = Instant.now(), val loaded: Boolean = false)
+class ShiftViewModel(private val app: ShiftHudApplication) : ViewModel() {
+    val engine = app.engine
+    private val ticks = flow { while (true) { emit(Instant.now()); delay(1000) } }
+    val state = combine(app.repository.schedule, app.repository.latestSession, app.preferences.lunchThresholdMinutes, ticks) { schedule, session, threshold, now -> ShiftUiState(schedule, session, threshold, now, true) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ShiftUiState())
+    private val _error = MutableStateFlow<String?>(null)
+    val error = _error.asStateFlow()
+    private val _busy = MutableStateFlow(false)
+    val busy = _busy.asStateFlow()
+    fun clearError() { _error.value = null }
+    private fun perform(action: suspend () -> Unit) {
+        if (_busy.value) return
+        _busy.value = true
+        viewModelScope.launch {
+            try { action() } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _error.value = e.message ?: "Could not save. Please try again." }
+            finally { _busy.value = false }
+        }
+    }
+    fun clockIn() = perform { app.repository.clockIn() }
+    fun startLunch(s: WorkSession) = perform { app.repository.transition(s.id, s.state, engine::startLunch) }
+    fun endLunch(s: WorkSession) = perform { app.repository.transition(s.id, s.state, engine::endLunch) }
+    fun clockOut(s: WorkSession) = perform { app.repository.transition(s.id, s.state, engine::clockOut) }
+    fun save(s: ScheduledShift, done: () -> Unit) = perform { app.repository.save(s); done() }
+    fun delete(id: Long, done: () -> Unit) = perform { app.repository.delete(id); done() }
+    fun threshold(minutes: Int, done: () -> Unit) = perform { app.preferences.setLunchThreshold(minutes); done() }
+}
