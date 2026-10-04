@@ -1,6 +1,7 @@
 package com.shifthud
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -20,8 +21,16 @@ import com.shifthud.ui.settings.SettingsScreen
 import com.shifthud.ui.theme.ShiftHudTheme
 
 class MainActivity : ComponentActivity() {
+    private var widgetDestination by mutableStateOf<String?>(null)
+    companion object { const val DESTINATION = "com.shifthud.widget.DESTINATION" }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        widgetDestination = intent.getStringExtra(DESTINATION)
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        widgetDestination = if (savedInstanceState == null) intent.getStringExtra(DESTINATION) else null
         enableEdgeToEdge()
         setContent {
             ShiftHudTheme {
@@ -33,6 +42,12 @@ class MainActivity : ComponentActivity() {
                 val busy by vm.busy.collectAsStateWithLifecycle()
                 val error by vm.error.collectAsStateWithLifecycle()
                 val nav = rememberNavController()
+                LaunchedEffect(widgetDestination) {
+                    widgetDestination?.takeIf { it == "Schedule" || it == "Dashboard" }?.let { destination ->
+                        nav.navigate(destination) { popUpTo(nav.graph.startDestinationId); launchSingleTop = true }
+                    }
+                    widgetDestination = null
+                }
                 val entry by nav.currentBackStackEntryAsState()
                 val snackbar = remember { SnackbarHostState() }
                 LaunchedEffect(error) { error?.let { snackbar.showSnackbar(it); vm.clearError() } }

@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.Flow
 interface ShiftDao {
     @Query("SELECT * FROM scheduled_shifts ORDER BY date, scheduledStart, id") fun observeSchedule(): Flow<List<ScheduledShiftEntity>>
     @Query("SELECT * FROM scheduled_shifts WHERE date = :date ORDER BY scheduledStart, id LIMIT 1") suspend fun today(date: Long): ScheduledShiftEntity?
+    @Query("SELECT * FROM scheduled_shifts ORDER BY date, scheduledStart, id") suspend fun scheduleSnapshot(): List<ScheduledShiftEntity>
+    @Query("SELECT * FROM work_sessions ORDER BY clockIn DESC, id DESC LIMIT 1") suspend fun latest(): WorkSessionEntity?
     @Upsert suspend fun save(shift: ScheduledShiftEntity)
     @Query("DELETE FROM scheduled_shifts WHERE id = :id") suspend fun delete(id: Long)
     @Query("SELECT * FROM work_sessions ORDER BY clockIn DESC, id DESC LIMIT 1") fun observeLatest(): Flow<WorkSessionEntity?>

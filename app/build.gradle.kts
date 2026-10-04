@@ -27,6 +27,8 @@ ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.11.01"))
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.glance:glance-appwidget:1.2.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.5")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.graphics:graphics-path:1.1.0")
     debugImplementation("androidx.compose.ui:ui-tooling")

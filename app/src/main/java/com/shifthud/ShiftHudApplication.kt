@@ -5,10 +5,12 @@ import com.shifthud.data.local.ShiftDatabase
 import com.shifthud.data.preferences.ShiftPreferences
 import com.shifthud.data.repository.ShiftRepository
 import com.shifthud.domain.usecase.ShiftEngine
+import com.shifthud.widget.WidgetRefresh
 
 class ShiftHudApplication : Application() {
     val engine by lazy { ShiftEngine() }
     private val database by lazy { Room.databaseBuilder(this, ShiftDatabase::class.java, "shifthud.db").build() }
-    val repository by lazy { ShiftRepository(database, engine) }
-    val preferences by lazy { ShiftPreferences(this) }
+    val widgetRefresh by lazy { WidgetRefresh(this) }
+    val repository by lazy { ShiftRepository(database, engine, onChanged = { widgetRefresh.refresh() }) }
+    val preferences by lazy { ShiftPreferences(this, onChanged = { widgetRefresh.refresh() }) }
 }
