@@ -36,9 +36,11 @@ class ShiftPreferences(context: Context, private val onChanged: suspend () -> Un
         }
         withContext(NonCancellable) { onChanged() }
     }
-    // DataStore serializes claims before posting. A crash between claim/post can miss one reminder,
-    // but cannot repeat it after recovery. No callback: delivery metadata never triggers a redraw.
-    suspend fun claimWarning(session: WorkSession?, now: Instant, engine: ShiftEngine, allowed: Boolean): WarningDecision {
+    // Serialize evaluation/post/ack with settings edits. A failed or blocked post never consumes
+    // the current candidate. Posting receipts in Android reconcile a crash before this edit commits.
+    suspend fun deliverWarning(session: WorkSession?, now: Instant, engine: ShiftEngine, allowed: Boolean,
+                               onEvaluated: (WarningDecision) -> Unit = {},
+                               post: (WarningDecision) -> Boolean): WarningDecision {
         var decision = WarningDecision(null)
         store.edit { p ->
             val previous = p[warningHistory]?.let { encoded -> runCatching {
@@ -47,6 +49,8 @@ class ShiftPreferences(context: Context, private val onChanged: suspend () -> Un
                 WarningLedger(json.getLong("session"), WarningSettings(json.getInt("threshold"), values("offsets")), values("consumed"))
             }.getOrNull() }
             decision = evaluateLunchWarning(session, settings(p), previous, now, engine, allowed)
+            onEvaluated(decision)
+            if (decision.offset != null && post(decision)) decision = decision.afterSuccessfulPost()
             if (decision.ledger == null) p.remove(warningHistory)
             else if (decision.ledger != previous) {
                 val ledger = decision.ledger!!

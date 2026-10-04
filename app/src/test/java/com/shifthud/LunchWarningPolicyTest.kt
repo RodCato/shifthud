@@ -23,7 +23,7 @@ class LunchWarningPolicyTest {
         assertNull(check(300, WarningLedger(42, config, emptySet()), config).offset)
     }
     @Test fun deliveredBoundaryDoesNotRepeatEachMinute() {
-        val first = check(330)
+        val first = check(330).afterSuccessfulPost()
         assertEquals(30, first.offset)
         assertNull(check(331, first.ledger).offset)
         assertNull(check(344, first.ledger).offset)
@@ -45,7 +45,7 @@ class LunchWarningPolicyTest {
     @Test fun delayedExecutionSelectsOnlyLatestCrossedBoundary() {
         val result = check(340)
         assertEquals(30, result.offset)
-        assertEquals(setOf(60, 30), result.ledger!!.consumed)
+        assertEquals(setOf(60), result.ledger!!.consumed) // Candidate 30 is not delivered yet.
         assertEquals("Lunch due in 20 minutes", warningTitle(Duration.ofMinutes(20)))
     }
     @Test fun executionAfterThresholdDoesNotEmitObsoleteReminder() {
@@ -54,7 +54,7 @@ class LunchWarningPolicyTest {
         assertEquals(settings.offsets, result.ledger!!.consumed)
     }
     @Test fun recoveredDeliveryHistoryPreventsDuplicates() {
-        val saved = check(330).ledger!!
+        val saved = check(330).afterSuccessfulPost().ledger!!
         val reconstructed = WarningLedger(saved.sessionId, saved.settings.copy(), saved.consumed.toSet())
         assertNull(check(335, reconstructed).offset)
     }
@@ -72,19 +72,19 @@ class LunchWarningPolicyTest {
         assertEquals(15, check(345, result.ledger).offset)
     }
     @Test fun changingThresholdBackCannotReplayConsumedOffset() {
-        val delivered = check(300).ledger!!
+        val delivered = check(300).afterSuccessfulPost().ledger!!
         val changed = check(300, delivered, WarningSettings(420))
         assertNull(check(360, changed.ledger, WarningSettings(420)).offset)
     }
-    @Test fun deniedPermissionConsumesBoundaryWithoutChangingShift() {
+    @Test fun deniedPermissionKeepsCurrentBoundaryRetryableWithoutChangingShift() {
         val before = session.copy()
         val denied = check(330, allowed = false)
         assertNull(denied.offset); assertTrue(denied.cancel)
-        assertNull(check(331, denied.ledger, allowed = true).offset)
+        assertEquals(30, check(331, denied.ledger, allowed = true).offset)
         assertEquals(before, session)
     }
     @Test fun noMetadataChangesBetweenBoundaries() {
-        val ledger = check(300).ledger!!
+        val ledger = check(300).afterSuccessfulPost().ledger!!
         assertEquals(ledger, check(310, ledger).ledger)
     }
     @Test fun shortThresholdSkipsImpossibleOffsetsAndSupportsTestWarnings() {

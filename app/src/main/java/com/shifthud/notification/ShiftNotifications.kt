@@ -5,6 +5,8 @@ import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ApplicationInfo
+import android.util.Log
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -30,7 +32,7 @@ class ShiftNotifications(private val context: Context) {
         })
     }
     fun warningsAllowed(): Boolean = permissionAllowed() && manager.areNotificationsEnabled() &&
-        manager.getNotificationChannel(WARNING_CHANNEL)?.importance != NotificationManager.IMPORTANCE_NONE
+        (manager.getNotificationChannel(WARNING_CHANNEL)?.importance ?: NotificationManager.IMPORTANCE_NONE) != NotificationManager.IMPORTANCE_NONE
     private fun permissionAllowed() = Build.VERSION.SDK_INT < 33 ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
@@ -65,26 +67,60 @@ class ShiftNotifications(private val context: Context) {
         val snapshot = app.repository.snapshot()
         val session = snapshot.session
         val now = Instant.now()
-        val decision = app.preferences.claimWarning(session, now, app.engine, warningsAllowed())
+        fun diagnostic(message: String) {
+            if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) Log.d(DIAGNOSTIC_TAG, "session=${session?.id} $message")
+        }
+        fun permissionState() = "permission=${permissionAllowed()} notificationsEnabled=${manager.areNotificationsEnabled()} channelImportance=${manager.getNotificationChannel(WARNING_CHANNEL)?.importance}"
+        val decision = app.preferences.deliverWarning(session, now, app.engine, warningsAllowed(), onEvaluated = { evaluation ->
+            val config = evaluation.ledger?.settings
+            val elapsed = session?.let { app.engine.durations(it, config?.threshold ?: 360, now).activeWork.toMillis() }
+            diagnostic("evaluate activeMs=$elapsed threshold=${config?.threshold} offsets=${config?.offsets?.sorted()} valid=${config?.validOffsets} candidate=${evaluation.candidateOffset} boundaryMinutes=${evaluation.candidateOffset?.let { config!!.threshold - it }} alreadyConsumed=${evaluation.candidateOffset in (evaluation.ledger?.consumed ?: emptySet())} reason=${evaluation.reason} ${permissionState()} notificationId=$WARNING_ID")
+        }) { candidate ->
+            val offset = requireNotNull(candidate.offset)
+            val settings = requireNotNull(candidate.ledger).settings
+            val activeSession = requireNotNull(session)
+            val receipt = "${activeSession.id}:$offset"
+            try {
+                // Recheck immediately before posting; blocked delivery remains retryable.
+                if (!warningsAllowed()) {
+                    diagnostic("notifyInvoked=false result=blocked ${permissionState()}")
+                    false
+                } else if (manager.activeNotifications.any { it.id == WARNING_ID && it.notification.extras.getString(WARNING_RECEIPT) == receipt }) {
+                    // Android already accepted this event before an interrupted DataStore commit.
+                    diagnostic("notifyInvoked=false result=existing_receipt receipt=$receipt")
+                    true
+                } else {
+                    val d = app.engine.durations(activeSession, settings.threshold, now)
+                    val notification = NotificationCompat.Builder(context, WARNING_CHANNEL)
+                        .setSmallIcon(R.drawable.ic_stat_shift).setContentTitle(warningTitle(d.lunchRemaining))
+                        .setContentText("You've worked ${d.activeWork.notificationDuration()}.")
+                        .setContentIntent(open()).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_REMINDER)
+                        .setTimeoutAfter(d.lunchRemaining.toMillis().coerceAtLeast(1))
+                        .addExtras(android.os.Bundle().apply { putString(WARNING_RECEIPT, receipt) })
+                        .addAction(0, "START LUNCH", action(LunchAction.START_LUNCH, activeSession.id))
+                        .addAction(0, "OPEN", open()).build()
+                    diagnostic("notifyInvoked=true notificationId=$WARNING_ID channel=$WARNING_CHANNEL receipt=$receipt")
+                    manager.notify(WARNING_ID, notification)
+                    diagnostic("notifyReturned=true result=posted receipt=$receipt")
+                    true
+                }
+            } catch (e: Exception) {
+                diagnostic("result=post_failed exception=${e.javaClass.simpleName} retryable=true")
+                false
+            }
+        }
+        diagnostic("dedupCommitted=true posted=${decision.posted} consumed=${decision.ledger?.consumed?.sorted()} cancel=${decision.cancel}")
+        if (decision.cancel) manager.cancel(WARNING_ID)
         val settings = decision.ledger?.settings ?: app.preferences.warningSettings.first()
         val state = ShiftNotificationStateFactory(app.engine).create(snapshot, settings.threshold, now,
             ZoneId.systemDefault(), context.resources.configuration.locales[0], android.text.format.DateFormat.is24HourFormat(context))
         if (state == null) manager.cancel(ActiveShiftService.NOTIFICATION_ID)
         else if (ActiveShiftService.isRunning && permissionAllowed()) manager.notify(ActiveShiftService.NOTIFICATION_ID, ongoing(state, session!!.id))
-        if (decision.cancel) manager.cancel(WARNING_ID)
-        if (decision.offset != null && session != null && permissionAllowed()) {
-            val d = app.engine.durations(session, settings.threshold, now)
-            val notification = NotificationCompat.Builder(context, WARNING_CHANNEL)
-                .setSmallIcon(R.drawable.ic_stat_shift).setContentTitle(warningTitle(d.lunchRemaining))
-                .setContentText("You've worked ${d.activeWork.notificationDuration()}.")
-                .setContentIntent(open()).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_REMINDER)
-                .setTimeoutAfter(d.lunchRemaining.toMillis().coerceAtLeast(1))
-                .addAction(0, "START LUNCH", action(LunchAction.START_LUNCH, session.id))
-                .addAction(0, "OPEN", open()).build()
-            manager.notify(WARNING_ID, notification)
-        }
     }
+
     companion object {
+        const val DIAGNOSTIC_TAG = "ShiftHUDWarning"
+        const val WARNING_RECEIPT = "shifthud.warning.receipt"
         const val WARNING_CHANNEL = "lunch_reminders"
         const val WARNING_ID = 1002
     }

@@ -1,5 +1,8 @@
 package com.shifthud.ui.settings
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
+import com.shifthud.notification.WarningSettings
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalContext
@@ -39,10 +42,13 @@ import com.shifthud.ui.*
         message?.let { Text(it) }
         Text("Lunch warnings", style = MaterialTheme.typography.titleLarge)
         Text("Reminders use active work time. Offsets at or above your threshold are skipped. 5m and 1m are useful for short shifts or testing.")
+        Text(WarningSettings(data.threshold, data.warningOffsets).boundarySummary())
+        Text("Save the threshold and choose warnings before clock-in. During a shift, newly enabled or changed boundaries already passed are skipped.")
         WARNING_CHOICES.forEach { offset ->
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Checkbox(checked = offset in data.warningOffsets, enabled = data.loaded && !busy,
-                    onCheckedChange = { vm.warning(offset, it) })
+            Row(modifier = Modifier.fillMaxWidth().toggleable(value = offset in data.warningOffsets,
+                enabled = data.loaded, role = Role.Checkbox, onValueChange = { vm.warning(offset, it) }),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Checkbox(checked = offset in data.warningOffsets, enabled = data.loaded, onCheckedChange = null)
                 Text("$offset ${if (offset == 1) "minute" else "minutes"} before")
             }
         }

@@ -33,6 +33,11 @@ class ShiftViewModel(private val app: ShiftHudApplication) : ViewModel() {
     fun clockOut(s: WorkSession) = perform { app.repository.transition(s.id, s.state, engine::clockOut) }
     fun save(s: ScheduledShift, done: () -> Unit) = perform { app.repository.save(s); done() }
     fun delete(id: Long, done: () -> Unit) = perform { app.repository.delete(id); done() }
-    fun warning(offset: Int, enabled: Boolean) = perform { app.preferences.setWarningEnabled(offset, enabled) }
+    // Each settings tap is queued; unrelated refresh work must not silently discard a toggle.
+    fun warning(offset: Int, enabled: Boolean) = viewModelScope.launch {
+        try { app.preferences.setWarningEnabled(offset, enabled) }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) { _error.value = e.message ?: "Could not save warning." }
+    }
     fun threshold(minutes: Int, done: () -> Unit) = perform { app.preferences.setLunchThreshold(minutes); done() }
 }
