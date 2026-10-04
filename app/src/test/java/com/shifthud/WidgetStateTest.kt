@@ -62,9 +62,32 @@ class WidgetStateTest {
     @Test fun workAfterLunchExcludesLunchAndDoesNotOfferSecondLunch() {
         val s = state(session = session().copy(lunchStart = start.plusSeconds(240 * 60), lunchEnd = start.plusSeconds(270 * 60)), minutes = 300)
         assertEquals("WORKING · 4h 30m", s.headline)
-        assertEquals("Lunch due in 1h 30m", s.detail)
+        assertEquals("Lunch taken\n8:00 AM – 8:30 AM · 30m", s.detail)
+        assertFalse(s.detail.contains("Lunch due"))
+        assertFalse(s.detail.contains("threshold"))
+        assertEquals(start.plusSeconds(240 * 60), s.completedLunch!!.start)
+        assertEquals(start.plusSeconds(270 * 60), s.completedLunch!!.end)
+        assertEquals(Duration.ofMinutes(30), s.completedLunch!!.duration)
         assertEquals("OPEN APP", s.actionLabel)
         assertNull(s.command)
+    }
+    @Test fun completedLunchRemainsAvailableAtAllWidgetSizes() {
+        val s = state(emptyList(), session().copy(lunchStart = start.plusSeconds(240 * 60), lunchEnd = start.plusSeconds(270 * 60)), minutes = 300)
+        for (normal in listOf(false, true, true)) { // compact, normal, expanded
+            val detail = s.detailForSize(normal)
+            assertTrue(detail.contains("Lunch taken"))
+            assertTrue(detail.contains("8:00 AM – 8:30 AM"))
+            assertTrue(detail.contains("30m"))
+            assertFalse(detail.contains("Lunch due"))
+        }
+        assertEquals("Unscheduled shift", s.scheduledOut)
+        assertEquals("OPEN APP", s.actionLabel)
+    }
+    @Test fun completedLunchUsesDeviceHourPreference() {
+        val persisted = session().copy(lunchStart = start.plusSeconds(600 * 60), lunchEnd = start.plusSeconds(650 * 60))
+        val s = factory.create(emptyList(), persisted, 360, start.plusSeconds(700 * 60), ZoneOffset.UTC, Locale.US, use24Hour = true)
+        assertEquals("Lunch taken\n14:00 – 14:50 · 50m", s.detail)
+        assertFalse(s.detail.contains("threshold"))
     }
     @Test fun completeTotalsFreezeAndShowNextShift() {
         val complete = session().copy(lunchStart = start.plusSeconds(240 * 60), lunchEnd = start.plusSeconds(270 * 60), clockOut = start.plusSeconds(480 * 60), state = ShiftState.COMPLETE)

@@ -35,7 +35,7 @@ class ShiftHudWidget : GlanceAppWidget() {
         app.widgetRefresh.configureWork()
         val factory = WidgetStateFactory(app.engine)
         fun state(schedule: List<com.shifthud.domain.model.ScheduledShift>, session: com.shifthud.domain.model.WorkSession?, limit: Int, now: Instant) =
-            factory.create(schedule, session, limit, now, ZoneId.systemDefault(), context.resources.configuration.locales[0])
+            factory.create(schedule, session, limit, now, ZoneId.systemDefault(), context.resources.configuration.locales[0], android.text.format.DateFormat.is24HourFormat(context))
         val initialState = state(initial.schedule, initial.session, threshold, Instant.now())
         provideContent {
             // Observe during Glance's finite composition session: updateAll alone does not restart it.
@@ -77,7 +77,8 @@ private fun WidgetContent(data: WidgetState, context: Context) {
         Spacer(GlanceModifier.height(6.dp))
         Text(data.headline, style = TextStyle(color = white, fontSize = if (normal) 20.sp else 16.sp, fontWeight = FontWeight.Bold), maxLines = 2)
         Spacer(GlanceModifier.height(4.dp))
-        Text(data.detail, style = TextStyle(color = white, fontSize = 14.sp), maxLines = 2)
+        Text(data.detailForSize(normal), style = TextStyle(color = white, fontSize = if (!normal && data.completedLunch != null) 12.sp else 14.sp),
+            maxLines = if (data.completedLunch != null) 3 else 2)
         if (normal) {
             data.scheduledOut?.let { Text(it, style = TextStyle(color = muted, fontSize = 14.sp), maxLines = 2) }
         }

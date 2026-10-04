@@ -1,6 +1,8 @@
 package com.shifthud.widget
 
 import com.shifthud.domain.model.*
+import com.shifthud.ui.CompletedLunch
+import com.shifthud.ui.completedLunch
 import com.shifthud.domain.usecase.ShiftEngine
 import java.time.*
 import java.time.format.DateTimeFormatter
@@ -19,16 +21,17 @@ data class WidgetState(
     val command: WidgetCommand? = null,
     val destination: String = "Dashboard",
     val updated: String,
+    val completedLunch: CompletedLunch? = null,
 )
 
 /** Pure presentation derived from the same engine as the Dashboard, never a second session store. */
 class WidgetStateFactory(private val engine: ShiftEngine) {
-    fun create(schedule: List<ScheduledShift>, latest: WorkSession?, threshold: Int, now: Instant, zone: ZoneId, locale: Locale): WidgetState {
+    fun create(schedule: List<ScheduledShift>, latest: WorkSession?, threshold: Int, now: Instant, zone: ZoneId, locale: Locale, use24Hour: Boolean = false): WidgetState {
         val today = now.atZone(zone).toLocalDate()
         val ordered = schedule.chronological()
         val scheduled = ordered.firstOrNull { it.date == today }
         val next = ordered.firstOrNull { it.start.atZone(zone).toInstant() > now && it.id != latest?.scheduledShiftId }
-        val time = DateTimeFormatter.ofPattern("h:mm a", locale)
+        val time = DateTimeFormatter.ofPattern(if (use24Hour) "HH:mm" else "h:mm a", locale)
         val date = DateTimeFormatter.ofPattern("EEE MMM d", locale)
         fun range(s: ScheduledShift) = "${s.scheduledStart.format(time)} – ${s.scheduledEnd.format(time)}" + if (s.end.toLocalDate() != s.date) " (+1 day)" else ""
         fun nextLabel() = next?.let { "Next: ${it.date.format(date)} · ${range(it)}" }
@@ -46,11 +49,12 @@ class WidgetStateFactory(private val engine: ShiftEngine) {
         val durations = engine.durations(session, threshold, now)
         val linked = ordered.firstOrNull { it.id == session.scheduledShiftId }
         val out = linked?.let { "Out · ${it.scheduledEnd.format(time)}" + if (it.end.toLocalDate() != it.date) " (+1 day)" else "" } ?: "Unscheduled shift"
+        val lunch = completedLunch(session, zone, locale, use24Hour)
         return when (session.state) {
             ShiftState.WORKING -> WidgetState(WidgetStatus.WORKING, "WORKING · ${durations.activeWork.widgetDuration()}",
-                if (durations.lunchRemaining.isNegative || durations.lunchRemaining.isZero) "Lunch threshold reached" else "Lunch due in ${durations.lunchRemaining.widgetDuration()}",
-                out, if (session.lunchEnd != null) "Lunch taken · ${durations.lunch.widgetDuration()}" else null,
-                if (session.lunchStart == null) "START LUNCH" else "OPEN APP", if (session.lunchStart == null) WidgetCommand(WidgetOperation.START_LUNCH, session.id, today) else null, updated = updated)
+                lunch?.detail ?: if (durations.lunchRemaining.isNegative || durations.lunchRemaining.isZero) "Lunch threshold reached" else "Lunch due in ${durations.lunchRemaining.widgetDuration()}",
+                out, null,
+                if (session.lunchStart == null) "START LUNCH" else "OPEN APP", if (session.lunchStart == null) WidgetCommand(WidgetOperation.START_LUNCH, session.id, today) else null, updated = updated, completedLunch = lunch)
             ShiftState.ON_LUNCH -> WidgetState(WidgetStatus.ON_LUNCH, "ON LUNCH · ${durations.lunch.widgetDuration()}",
                 "Paid · ${durations.paid.widgetDuration()}", out, actionLabel = "END LUNCH", command = WidgetCommand(WidgetOperation.END_LUNCH, session.id, today), updated = updated)
             ShiftState.COMPLETE -> WidgetState(WidgetStatus.COMPLETE, "SHIFT COMPLETE", "Paid · ${durations.paid.widgetDuration()}",
@@ -63,3 +67,6 @@ internal fun Duration.widgetDuration(): String {
     val minutes = toMinutes().coerceAtLeast(0)
     return if (minutes < 60) "${minutes}m" else "${minutes / 60}h ${minutes % 60}m"
 }
+
+internal fun WidgetState.detailForSize(normal: Boolean): String =
+    if (normal) detail else completedLunch?.compactDetail ?: detail

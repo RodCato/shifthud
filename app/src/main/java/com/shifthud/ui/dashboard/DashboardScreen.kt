@@ -6,12 +6,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import com.shifthud.domain.model.*
 import com.shifthud.ui.*
 import java.time.*
 
 @Composable fun DashboardScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean) {
+    val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
     val today = data.now.atZone(ZoneId.systemDefault()).toLocalDate()
     val scheduled = data.schedule.firstOrNull { it.date == today }
     val session = data.session?.takeIf { it.state != ShiftState.COMPLETE || it.clockOut?.atZone(ZoneId.systemDefault())?.toLocalDate() == today }
@@ -33,8 +37,8 @@ import java.time.*
             when (session.state) {
                 ShiftState.WORKING -> {
                     Text("WORKING — ${durations.activeWork.display()}", style = MaterialTheme.typography.headlineSmall)
-                    Text(if (durations.lunchRemaining.isNegative || durations.lunchRemaining.isZero) "Lunch threshold reached" else "Lunch due in ${durations.lunchRemaining.display()}")
-                    if (session.lunchEnd != null) Text("Lunch taken: ${durations.lunch.display()}")
+                    val lunch = completedLunch(session, ZoneId.systemDefault(), locale, android.text.format.DateFormat.is24HourFormat(context))
+                    Text(lunch?.detail ?: if (durations.lunchRemaining.isNegative || durations.lunchRemaining.isZero) "Lunch threshold reached" else "Lunch due in ${durations.lunchRemaining.display()}")
                     if (session.lunchStart == null) Button(onClick = { vm.startLunch(session) }, enabled = !busy) { Text("START LUNCH") }
                     Button(onClick = { vm.clockOut(session) }, enabled = !busy) { Text("CLOCK OUT") }
                 }
