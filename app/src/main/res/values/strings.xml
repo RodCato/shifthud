@@ -1,0 +1,9 @@
+<resources>
+    <string name="widget_title">SHIFT HUD</string>
+    <string name="widget_description">Your personal shift, lunch, and schedule at a glance.</string>
+    <string name="active_shift_channel">Active shift updates</string>
+    <string name="active_shift_channel_description">Silent service notification while your shift or lunch is active.</string>
+    <string name="active_shift_working">Working · tap to open</string>
+    <string name="active_shift_lunch">On lunch · tap to open</string>
+    <string name="active_shift_restoring">Restoring active shift · tap to open</string>
+</resources>
