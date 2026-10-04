@@ -1,6 +1,15 @@
 package com.shifthud
 
 import android.os.Bundle
+import android.os.Build
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import com.shifthud.service.requiresActiveRefresh
 import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -21,6 +30,20 @@ import com.shifthud.ui.settings.SettingsScreen
 import com.shifthud.ui.theme.ShiftHudTheme
 
 class MainActivity : ComponentActivity() {
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    override fun onStart() {
+        super.onStart()
+        // Visible-activity recovery is permitted even when Android denied a background start.
+        lifecycleScope.launch { (application as ShiftHudApplication).widgetRefresh.refresh() }
+    }
+    private fun requestActiveNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        val prompts = getSharedPreferences("permission_prompts", MODE_PRIVATE)
+        if (!prompts.getBoolean("active_notification_requested", false)) {
+            prompts.edit { putBoolean("active_notification_requested", true) }
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
     private var widgetDestination by mutableStateOf<String?>(null)
     companion object { const val DESTINATION = "com.shifthud.widget.DESTINATION" }
     override fun onNewIntent(intent: Intent) {
@@ -39,6 +62,9 @@ class MainActivity : ComponentActivity() {
                     override fun <T : ViewModel> create(modelClass: Class<T>): T = ShiftViewModel(application as ShiftHudApplication) as T
                 })
                 val data by vm.state.collectAsStateWithLifecycle()
+                LaunchedEffect(data.session?.state) {
+                    if (requiresActiveRefresh(data.session?.state)) requestActiveNotificationPermission()
+                }
                 val busy by vm.busy.collectAsStateWithLifecycle()
                 val error by vm.error.collectAsStateWithLifecycle()
                 val nav = rememberNavController()

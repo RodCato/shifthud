@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application android:name=".ShiftHudApplication" android:label="ShiftHUD" android:icon="@drawable/ic_launcher" android:dataExtractionRules="@xml/data_extraction_rules" android:theme="@style/Theme.ShiftHUD" android:allowBackup="false" android:fullBackupContent="false" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
@@ -6,6 +10,17 @@
         <receiver android:name=".widget.ShiftHudWidgetReceiver" android:exported="false" android:label="ShiftHUD">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/shift_hud_widget"/>
+        </receiver>
+        <service android:name=".service.ActiveShiftService" android:exported="false"
+            android:stopWithTask="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-initiated personal work-shift tracking: refresh timestamp-derived home-screen elapsed work and lunch information approximately once per minute only during an active shift." />
+        </service>
+        <receiver android:name=".service.ActiveShiftRecoveryReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
         </receiver>
     </application>
 </manifest>

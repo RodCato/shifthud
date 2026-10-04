@@ -97,6 +97,14 @@ class WidgetActionTest {
         assertEquals(1, actionRefreshes)
         assertEquals(0, writeRefreshes)
     }
+    @Test fun refreshOfActiveSessionDoesNotModifyPersistedEvents() = runBlocking {
+        actions.execute(command(WidgetOperation.CLOCK_IN))
+        val before = repo.snapshot()
+        val writeCount = writeRefreshes
+        repeat(5) { assertTrue(actions.execute(command(WidgetOperation.REFRESH))) }
+        assertEquals(before, repo.snapshot())
+        assertEquals(writeCount, writeRefreshes)
+    }
     @Test fun missingSessionActionFailsAndRefreshes() = runBlocking {
         assertFalse(actions.execute(command(WidgetOperation.END_LUNCH, 999)))
         assertNull(repo.snapshot().session)

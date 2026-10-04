@@ -9,7 +9,7 @@ ShiftHUD is a personal Android work-shift dashboard with a manually entered sche
 - Clock in automatically links the earliest scheduled shift starting today, ordered by start time then ID. Multiple shifts on a date are supported in the schedule; the earliest is the deterministic dashboard/association choice in this MVP.
 - Unscheduled clock-in, one lunch, clock-out, and completed paid/store totals.
 - Configurable lunch threshold, default 360 active work minutes, in Preferences DataStore.
-- Room persists event timestamps. Returning after backgrounding, process death, or reboot reconstructs durations when the app opens; no background timer service is needed.
+- Room persists event timestamps. Durations reconstruct from those timestamps after backgrounding, process death, or reboot. An active-shift foreground service drives widget redraws; it never owns or persists a timer.
 
 ## Architecture
 
@@ -48,7 +48,7 @@ Manual smoke test: add today's schedule, edit it, clock in, start/end lunch, clo
 - MVP-004 — Quick Find
 - MVP-005 — History / Statistics / Polish
 
-Notifications, lunch warnings, Quick Find, history UI, networking, authentication, automatic import, cloud sync, and analytics are intentionally absent. WorkManager is used only for widget refresh, not reminders.
+Full notification/reminder UX, lunch warnings, Quick Find, history UI, networking, authentication, automatic import, cloud sync, and analytics are intentionally absent. WorkManager is used only for widget refresh, not reminders.
 
 ## Verification for this implementation
 
@@ -66,13 +66,44 @@ The header opens Dashboard. OFF TODAY / ADD SHIFT opens Schedule, where Add Shif
 
 ### Refresh strategy and timing limits
 
-- Every successful repository write (schedule add/edit/delete and all shift transitions) and lunch-threshold preference save invokes the centralized `WidgetRefresh` hook **after persistence**. It requests updates for all placed instances and updates active Glance compositions. Widget callbacks also refresh after invalid/stale actions. A refresh failure is logged without undoing or misreporting a successful persisted write.
-- One unique **15-minute WorkManager job** is maintained only while a WORKING/ON_LUNCH session and at least one installed widget exist. It is canceled after completion or removal of the last widget. WorkManager 2.10.5 is an explicit dependency because these APIs are used directly; Glance itself also uses WorkManager internally. This job has no notification or warning behavior.
-- Android's provider `updatePeriodMillis` requests **30-minute** updates for schedule/date rollover and recovery, including while idle. Adding/resizing a widget reads persisted data and reconciles the active refresh job. WorkManager restores scheduled work after reboot; launcher/platform widget updates also reconstruct persisted state when delivered.
-- No per-second or per-minute loop, foreground service, exact alarm, or incrementing persisted counter exists. Each render derives durations from the engine's timestamps. Values use whole minutes and are snapshots, **not a guaranteed live clock**. The Updated line states the calculation time and offers manual refresh.
-- Doze, battery restrictions, launcher behavior, force-stop, and OS scheduling can delay updates. A force-stop through Settings/ADB is stronger than removing Recents and can suspend background delivery until the app is opened. Startup after a reboot can require first unlock. The 15/30-minute cadences are requests, never exact-time guarantees.
+- Every successful repository write and lunch-threshold save invokes centralized `WidgetRefresh` **after persistence**. App and widget actions share this path. WORKING/ON_LUNCH starts or wakes `ActiveShiftService` before an immediate redraw; clock-out requests the final redraw before stopping the service. Failed redraws never undo successful database writes.
+- The service owns one conflated coroutine loop. It rereads Room and requests all installed Glance instances to redraw near the next **elapsed-minute boundary**, using active work time or current lunch time. Repeated starts wake that same loop. A delayed tick immediately catches up from persisted event timestamps; there are no elapsed counters, per-second polls, timer writes, exact alarms, or wake locks. With no widgets installed it skips Glance updates.
+- A unique **15-minute WorkManager job** remains a slow fallback only while an active session and installed widget exist. It cannot start a foreground service from the background. Provider updates request **30-minute** idle/schedule refreshes. The Updated line retains manual refresh, which also attempts active-service recovery after a widget interaction.
+- Minute cadence is approximate. Doze, suspension, battery restrictions, and launcher delivery may delay a render. No exact wall-clock deadline is promised. Notification content changes only on state transitions, not every tick.
 
-Design references checked for the selected version: [Glance releases](https://developer.android.com/jetpack/androidx/releases/glance), [Glance lifecycle and updates](https://developer.android.com/develop/ui/compose/glance/glance-app-widget), [responsive layouts](https://developer.android.com/develop/ui/compose/glance/build-ui), and [WorkManager periodic timing](https://developer.android.com/develop/background-work/background-tasks/persistent/getting-started/define-work). Glance renders RemoteViews and cannot use an always-running Compose timer on the launcher.
+### Foreground notification and Android recovery
+
+The silent, low-importance **Active shift updates** channel shows an ongoing **ShiftHUD / Working · tap to open** or **On lunch · tap to open** notification. Tapping it opens Dashboard. This is service infrastructure only; MVP-003 lunch warnings and full notification controls remain deferred.
+
+Target SDK is 36, minimum 26. The manifest declares `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE`, `POST_NOTIFICATIONS`, and `RECEIVE_BOOT_COMPLETED`. API 34+ uses the `specialUse` service type with a manifest explanation for user-initiated personal shift tracking. It does not impersonate data synchronization or health tracking. Google Play distribution requires a special-use declaration/review; approval is not assumed. See [foreground service types](https://developer.android.com/develop/background-work/services/fgs/service-types).
+
+Android 12+ restricts background service starts. Visible app launches and widget interactions may start it; passive WorkManager refresh does not try. Boot/package-replacement receivers read Room and start only for an active session, under the applicable system-broadcast exemption after unlock. Android 15 restricts boot starts for several types; this service uses specialUse. Denied starts are logged and leave persisted state/manual refresh intact. See [background-start restrictions](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start).
+
+`START_STICKY` lets Android recreate a killed service, including a null-intent restart. The service promotes immediately, then reads Room; no active session means final redraw and shutdown. `stopWithTask=false` allows ordinary Recents dismissal without stopping tracking. Visible app launch also reconciles service state. Restart timing and OEM behavior are not guaranteed, and force-stop/Android's user-stop controls are not bypassed. See [START_STICKY](https://developer.android.com/reference/android/app/Service#START_STICKY).
+
+On API 33+, the app requests notification permission once when an active session is visible. A widget action does not force an Activity open merely to prompt. Denial does not prevent the foreground service: Android still exposes it in Task Manager, while its notification may be absent from the drawer. The permission-prompt preference is UI metadata, never a timer. See [notification permission](https://developer.android.com/develop/ui/compose/notifications/notification-permission).
+
+### Active refresh physical-device acceptance test
+
+1. Add ShiftHUD widget.
+2. Clock in.
+3. Do NOT touch manual refresh.
+4. Observe WORKING · 0m.
+5. Wait >1 minute.
+6. Confirm widget automatically advances to at least WORKING · 1m.
+7. Continue several minutes and confirm progression.
+8. Start lunch.
+9. Confirm lunch duration automatically advances.
+10. End lunch.
+11. Confirm WORKING duration resumes correctly.
+12. Remove ShiftHUD app from Recents.
+13. Confirm active widget updates continue.
+14. Open app and verify same authoritative state.
+15. Clock out.
+16. Confirm widget receives final COMPLETE refresh.
+17. Confirm active refresh service stops after completion.
+
+Also verify battery usage is not driven by per-second work. Test permission denial, reboot/unlock with an active session, process recreation, and multiple widget instances on the target physical device. Read service state with `adb shell dumpsys activity services com.shifthud`; completion should leave no ActiveShiftService. OS delivery and battery behavior require real-device validation.
 
 ### MVP-002 physical-device checklist
 
@@ -98,6 +129,8 @@ Design references checked for the selected version: [Glance releases](https://de
 
 ### MVP-002 verification recorded
 
-Debug build and all **63 unit tests** pass, including all 38 MVP-001 tests. Lint passes with 0 errors and 12 dependency-update advisories. Emulator verification covered actual launcher placement, no-upcoming and today states, Schedule navigation, app-save-to-widget refresh, widget Clock In/Start Lunch/End Lunch, Dashboard agreement, safe Dashboard clock-out, completed totals, and process-death recovery (PID killed before END LUNCH). Compact/expanded launcher resizing and normal layout at a temporary emulator density were inspected; density was restored. Emulator reboot/unlock restored the widget and persisted completed totals without launching the app.
+Full Gradle build and all **76 unit tests per build variant** pass, including all existing MVP-001/MVP-002 tests. Added tests cover active-state decisions, final-refresh-before-stop ordering, background-start suppression, elapsed-minute alignment, timestamp-based catch-up, and refresh without repository writes. Lint passes with 0 errors and 12 dependency-update advisories. Emulator verification covered actual launcher placement, no-upcoming and today states, Schedule navigation, app-save-to-widget refresh, widget Clock In/Start Lunch/End Lunch, Dashboard agreement, safe Dashboard clock-out, completed totals, and process-death recovery (PID killed before END LUNCH). Compact/expanded launcher resizing and normal layout at a temporary emulator density were inspected; density was restored. Emulator reboot/unlock restored the widget and persisted completed totals without launching the app.
 
-Two-instance placement was attempted but the test launcher did not place the additional instance; concurrent/shared-session safeguards are unit tested, while two-instance visual synchronization remains on the physical-device checklist. Exact passive delivery timing, manufacturer-specific battery restrictions, and large-font/accessibility permutations also require physical-device validation. No notification/lunch-warning behavior is included; that remains MVP-003.
+Two-instance placement was attempted but the test launcher did not place the additional instance; concurrent/shared-session safeguards are unit tested, while two-instance visual synchronization remains on the physical-device checklist. Manufacturer-specific battery restrictions and large-font/accessibility permutations also require physical-device validation. Full notification/lunch-warning UX remains MVP-003; the active-service notification described above is included.
+
+Active-refresh follow-up verification used the available Pixel 9 emulator (Android 17 / API 37, app target 36): widget WORKING advanced 0m → 1m → 2m → 3m → 4m without manual refresh, including a tick after confirmed Recents removal. ON LUNCH advanced 0m → 1m while paid time stayed fixed. Room database and WAL SHA-256 hashes were unchanged across that passive lunch tick. APK replacement, killing the process, and reboot/unlock each restored one foreground service without launching the app; system diagnostics showed PACKAGE_REPLACED and BOOT_COMPLETED exemptions. After lunch, work advanced 4m → 5m automatically; the notification opened the matching Dashboard. Clock-out rendered SHIFT COMPLETE immediately, and diagnostics confirmed no ActiveShiftService or posted ShiftHUD notification remained. No physical-device battery measurements were performed.
