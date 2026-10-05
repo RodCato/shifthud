@@ -16,10 +16,13 @@ import com.shifthud.R
 import com.shifthud.ShiftHudApplication
 import com.shifthud.service.ActiveShiftService
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.*
 
 /** Called through the existing serialized WidgetRefresh path; owns no loop or work-time data. */
 class ShiftNotifications(private val context: Context) {
+    private val mutex = Mutex()
     private val manager = context.getSystemService(NotificationManager::class.java)
     fun createChannels() {
         manager.createNotificationChannel(NotificationChannel(ActiveShiftService.CHANNEL_ID, context.getString(R.string.active_shift_channel), NotificationManager.IMPORTANCE_LOW).apply {
@@ -75,6 +78,33 @@ class ShiftNotifications(private val context: Context) {
             .addAction(0, "START LUNCH", action(LunchAction.START_LUNCH, sessionId))
             .addAction(0, "OPEN", open()).build()
 
+    fun attentionReminder(sessionId: Long, activeWork: Duration, state: LunchAttention, snoozeMinutes: Int, onlyAlertOnce: Boolean = false): Notification {
+        val snooze = PendingIntent.getBroadcast(context, 0,
+            Intent(context, NotificationActionReceiver::class.java).setAction(SNOOZE_ACTION)
+                .setData("shifthud://notification/${state.receipt}/snooze".toUri())
+                .putExtra("sessionId", sessionId).putExtra("receipt", state.receipt),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        return NotificationCompat.Builder(context, WARNING_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_shift)
+            .setOnlyAlertOnce(onlyAlertOnce)
+            .setContentTitle(if (state.generation == 0L) "Lunch time" else "Lunch reminder")
+            .setContentText(if (state.generation == 0L) "You've worked ${activeWork.notificationDuration()}."
+                else "Snoozed reminder · Worked ${activeWork.notificationDuration()}.")
+            .setContentIntent(open()).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setPriority(NotificationCompat.PRIORITY_HIGH).setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .addExtras(android.os.Bundle().apply { putString(WARNING_RECEIPT, state.receipt) })
+            .addAction(0, "START LUNCH", action(LunchAction.START_LUNCH, sessionId))
+            .addAction(0, "SNOOZE ${snoozeMinutes}M", snooze)
+            .addAction(0, "OPEN", open()).build()
+    }
+
+    suspend fun snooze(sessionId: Long, receipt: String): Boolean = mutex.withLock {
+        val app = context.applicationContext as ShiftHudApplication
+        val accepted = app.preferences.snooze(sessionId, receipt, { app.repository.snapshot().session }, Instant.now(), app.engine)
+        if (accepted) manager.cancel(WARNING_ID)
+        accepted
+    }
+
     fun reminderStatus(): ReminderChannelStatus {
         val channel = manager.getNotificationChannel(WARNING_CHANNEL)
         return ReminderChannelStatus(permissionAllowed() && manager.areNotificationsEnabled(),
@@ -85,7 +115,7 @@ class ShiftNotifications(private val context: Context) {
         .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
         .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, WARNING_CHANNEL)
 
-    suspend fun refresh() {
+    suspend fun refresh() = mutex.withLock {
         createChannels()
         val app = context.applicationContext as ShiftHudApplication
         val snapshot = app.repository.snapshot()
@@ -127,7 +157,35 @@ class ShiftNotifications(private val context: Context) {
             }
         }
         diagnostic("dedupCommitted=true posted=${decision.posted} consumed=${decision.ledger?.consumed?.sorted()} cancel=${decision.cancel}")
-        if (decision.cancel) manager.cancel(WARNING_ID)
+        val attention = app.preferences.deliverAttention(session, now, app.engine, warningsAllowed()) { event, snoozeMinutes ->
+            try {
+                if (!warningsAllowed()) false
+                else if (manager.activeNotifications.any { it.id == WARNING_ID && it.notification.extras.getString(WARNING_RECEIPT) == event.receipt }) true
+                else {
+                    val active = app.engine.durations(requireNotNull(session), decision.ledger?.settings?.threshold ?: 360, now).activeWork
+                    diagnostic("attentionNotifyInvoked=true receipt=${event.receipt} targetActiveMs=${event.targetActiveMillis}")
+                    manager.notify(WARNING_ID, attentionReminder(session.id, active, event, snoozeMinutes))
+                    diagnostic("attentionNotifyReturned=true receipt=${event.receipt}")
+                    true
+                }
+            } catch (e: Exception) {
+                diagnostic("attentionPostFailed=${e.javaClass.simpleName} retryable=true")
+                false
+            }
+        }
+        diagnostic("attentionCommitted=true receipt=${attention.state?.receipt} posted=${attention.state?.posted} targetActiveMs=${attention.state?.targetActiveMillis}")
+        if (decision.cancel && attention.state?.posted != true) manager.cancel(WARNING_ID)
+        // A changed preference updates an existing action label silently, never creates another alert.
+        attention.state?.takeIf { it.posted }?.let { event ->
+            val existing = manager.activeNotifications.firstOrNull {
+                it.id == WARNING_ID && it.notification.extras.getString(WARNING_RECEIPT) == event.receipt
+            }
+            val minutes = app.preferences.snoozeMinutes.first()
+            if (warningsAllowed() && existing != null && existing.notification.actions?.getOrNull(1)?.title?.toString() != "SNOOZE ${minutes}M") {
+                val active = app.engine.durations(requireNotNull(session), decision.ledger?.settings?.threshold ?: 360, now).activeWork
+                manager.notify(WARNING_ID, attentionReminder(session.id, active, event, minutes, onlyAlertOnce = true))
+            }
+        }
         val settings = decision.ledger?.settings ?: app.preferences.warningSettings.first()
         val state = ShiftNotificationStateFactory(app.engine).create(snapshot, settings.threshold, now,
             ZoneId.systemDefault(), context.resources.configuration.locales[0], android.text.format.DateFormat.is24HourFormat(context))
@@ -136,6 +194,7 @@ class ShiftNotifications(private val context: Context) {
     }
 
     companion object {
+        const val SNOOZE_ACTION = "SNOOZE_LUNCH"
         const val DIAGNOSTIC_TAG = "ShiftHUDWarning"
         const val WARNING_RECEIPT = "shifthud.warning.receipt"
         const val WARNING_CHANNEL = "lunch_reminders"

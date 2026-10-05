@@ -28,6 +28,7 @@ import com.shifthud.ui.*
         reminderStatus = notifications.reminderStatus()
         onPauseOrDispose { }
     }
+    val snoozeMinutes by (context.applicationContext as ShiftHudApplication).preferences.snoozeMinutes.collectAsState(initial = 10)
     var input by rememberSaveable(data.threshold) { mutableStateOf(data.threshold.toString()) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -40,7 +41,8 @@ import com.shifthud.ui.*
             else vm.threshold(minutes) { message = "Saved" }
         }) { Text("Save") }
         message?.let { Text(it) }
-        Text("Lunch warnings", style = MaterialTheme.typography.titleLarge)
+        Text("Early lunch warnings", style = MaterialTheme.typography.titleLarge)
+        Text("A separate Lunch time alert appears at your threshold, even when early warnings are disabled.")
         Text("Reminders use active work time. Offsets at or above your threshold are skipped. 5m and 1m are useful for short shifts or testing.")
         Text(WarningSettings(data.threshold, data.warningOffsets).boundarySummary())
         Text("Save the threshold and choose warnings before clock-in. During a shift, newly enabled or changed boundaries already passed are skipped.")
@@ -50,6 +52,17 @@ import com.shifthud.ui.*
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Checkbox(checked = offset in data.warningOffsets, enabled = data.loaded, onCheckedChange = null)
                 Text("$offset ${if (offset == 1) "minute" else "minutes"} before")
+            }
+        }
+        Text("Lunch snooze duration", style = MaterialTheme.typography.titleLarge)
+        Text("Applies to future snooze actions. An existing snooze target stays unchanged.")
+        com.shifthud.notification.SNOOZE_CHOICES.forEach { minutes ->
+            Row(Modifier.fillMaxWidth().toggleable(value = snoozeMinutes == minutes,
+                enabled = data.loaded && !busy, role = Role.RadioButton,
+                onValueChange = { vm.snoozeMinutes(minutes) }),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                RadioButton(selected = snoozeMinutes == minutes, onClick = null)
+                Text("$minutes minutes")
             }
         }
         Text("Lunch Reminder Status", style = MaterialTheme.typography.titleLarge)

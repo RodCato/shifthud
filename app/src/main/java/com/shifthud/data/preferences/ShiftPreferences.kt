@@ -36,6 +36,49 @@ class ShiftPreferences(context: Context, private val onChanged: suspend () -> Un
         }
         withContext(NonCancellable) { onChanged() }
     }
+    private val snoozeDuration = intPreferencesKey("lunch_snooze_minutes")
+    private val attentionHistory = stringPreferencesKey("lunch_attention")
+    val snoozeMinutes: Flow<Int> = store.data.map { it[snoozeDuration]?.takeIf { n -> n in SNOOZE_CHOICES } ?: 10 }
+    suspend fun setSnoozeMinutes(minutes: Int) {
+        require(minutes in SNOOZE_CHOICES)
+        store.edit { it[snoozeDuration] = minutes }
+        withContext(NonCancellable) { onChanged() }
+    }
+    private fun attention(p: Preferences): LunchAttention? = p[attentionHistory]?.let { encoded ->
+        runCatching {
+            val j = JSONObject(encoded)
+            LunchAttention(j.getLong("session"), j.getLong("generation"),
+                if (j.has("target")) j.getLong("target") else null, j.getBoolean("posted"))
+        }.getOrNull()
+    }
+    private fun saveAttention(p: MutablePreferences, state: LunchAttention?) {
+        if (state == null) p.remove(attentionHistory)
+        else p[attentionHistory] = JSONObject().put("session", state.sessionId).put("generation", state.generation)
+            .put("target", state.targetActiveMillis).put("posted", state.posted).toString()
+    }
+    suspend fun deliverAttention(session: WorkSession?, now: Instant, engine: ShiftEngine,
+                                 allowed: Boolean, post: (LunchAttention, Int) -> Boolean): AttentionDecision {
+        var result = AttentionDecision(null)
+        store.edit { p ->
+            val previous = attention(p)
+            result = evaluateLunchAttention(session, previous, settings(p).threshold, now, engine)
+            if (result.due && allowed && post(result.state!!, p[snoozeDuration] ?: 10)) result = result.acknowledged()
+            if (result.state != previous) saveAttention(p, result.state)
+        }
+        return result
+    }
+    // Read authoritative Room state inside the serialized edit, never trust notification timestamps.
+    suspend fun snooze(sessionId: Long, receipt: String, current: suspend () -> WorkSession?,
+                       now: Instant, engine: ShiftEngine): Boolean {
+        var accepted = false
+        store.edit { p ->
+            val session = current()?.takeIf { it.id == sessionId }
+            val next = snoozeLunchAttention(session, attention(p), receipt, settings(p).threshold,
+                p[snoozeDuration] ?: 10, now, engine)
+            if (next != null) { saveAttention(p, next); accepted = true }
+        }
+        return accepted
+    }
     // Serialize evaluation/post/ack with settings edits. A failed or blocked post never consumes
     // the current candidate. Posting receipts in Android reconcile a crash before this edit commits.
     suspend fun deliverWarning(session: WorkSession?, now: Instant, engine: ShiftEngine, allowed: Boolean,

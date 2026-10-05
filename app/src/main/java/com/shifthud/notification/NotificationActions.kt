@@ -20,14 +20,21 @@ class NotificationActionExecutor(repository: ShiftRepository, engine: ShiftEngin
 
 class NotificationActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val action = runCatching { LunchAction.valueOf(intent.action.orEmpty()) }.getOrNull() ?: return
+        val snooze = intent.action == ShiftNotifications.SNOOZE_ACTION
+        val action = runCatching { LunchAction.valueOf(intent.action.orEmpty()) }.getOrNull()
+        if (!snooze && action == null) return
+        val receipt = intent.getStringExtra("receipt")
+        if (snooze && receipt == null) return
         val sessionId = intent.getLongExtra("sessionId", -1).takeIf { it > 0 } ?: return
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 withTimeout(8_000) {
                     val app = context.applicationContext as ShiftHudApplication
-                    NotificationActionExecutor(app.repository, app.engine) { app.widgetRefresh.refresh() }.execute(action, sessionId)
+                    if (snooze) {
+                        try { app.notifications.snooze(sessionId, receipt!!) }
+                        finally { app.widgetRefresh.refresh() }
+                    } else NotificationActionExecutor(app.repository, app.engine) { app.widgetRefresh.refresh() }.execute(action!!, sessionId)
                 }
             } catch (e: Exception) { Log.w("ShiftHUDAction", "Action reconciliation deferred", e) }
             finally { pending.finish() }

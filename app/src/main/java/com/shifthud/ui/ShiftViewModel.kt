@@ -39,5 +39,6 @@ class ShiftViewModel(private val app: ShiftHudApplication) : ViewModel() {
         catch (e: CancellationException) { throw e }
         catch (e: Exception) { _error.value = e.message ?: "Could not save warning." }
     }
+    fun snoozeMinutes(minutes: Int) = perform { app.preferences.setSnoozeMinutes(minutes) }
     fun threshold(minutes: Int, done: () -> Unit) = perform { app.preferences.setLunchThreshold(minutes); done() }
 }
