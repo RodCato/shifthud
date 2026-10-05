@@ -16,7 +16,7 @@ import java.time.LocalTime
 internal fun PickerField(label: String, value: String, enabled: Boolean, onClick: () -> Unit) {
     OutlinedButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.labelMedium)
                 Text(value, style = MaterialTheme.typography.bodyLarge)
             }

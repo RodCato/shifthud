@@ -57,9 +57,12 @@ class ActiveShiftService : Service() {
                 // Checks for installed instances before touching Glance. No timer writes, wake lock,
                 // exact alarms, or catch-up ticks. After sleep/Doze, the next render uses current time.
                 app.widgetRefresh.refresh(mayStartService = false, synchronizeService = false)
-                val durations = app.engine.durations(session, 360)
-                val elapsed = if (session.state == ShiftState.ON_LUNCH) durations.lunch else durations.activeWork
-                withTimeoutOrNull(nextActiveRefreshDelayMillis(elapsed)) { wake.receive() }
+                val refreshed = app.repository.snapshot().session ?: continue
+                val now = java.time.Instant.now()
+                val durations = app.engine.durations(refreshed, 360, now)
+                val elapsed = if (refreshed.state == ShiftState.ON_LUNCH) durations.lunch else durations.activeWork
+                val delayMillis = autoLunchRefreshDelayMillis(refreshed, now, nextActiveRefreshDelayMillis(elapsed))
+                withTimeoutOrNull(delayMillis) { wake.receive() }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 Log.w(TAG, "Refresh delayed; persisted session is unchanged", e)

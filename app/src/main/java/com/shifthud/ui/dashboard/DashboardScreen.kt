@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -14,6 +14,7 @@ import com.shifthud.ui.*
 import java.time.*
 
 @Composable fun DashboardScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean) {
+    var showRecord by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
     val today = data.now.atZone(ZoneId.systemDefault()).toLocalDate()
@@ -51,12 +52,17 @@ import java.time.*
                     Text("SHIFT COMPLETE", style = MaterialTheme.typography.headlineSmall)
                     Text("Paid: ${durations.paid.display()}")
                     Text("Store time: ${durations.store.display()}")
+                    Text("Lunch: ${durations.lunch.display()}" + if (session.lunchEndAutomatic) " · Auto" else "")
                     scheduled?.let { Text("Today's schedule: ${it.timeLabel()}") }
                     OutlinedButton(onClick = vm::clockIn, enabled = !busy) { Text("CLOCK IN — NEW SESSION") }
                 }
                 ShiftState.NOT_STARTED -> Unit
             }
             if (session.state != ShiftState.COMPLETE) Text(linked?.let { "Scheduled out: ${it.scheduledEnd.format(timeFormat)}${if (it.end.toLocalDate() != it.date) " (+1 day)" else ""}" } ?: "Unscheduled shift")
+        }
+        data.session?.let { record ->
+            OutlinedButton(onClick = { showRecord = true }, enabled = !busy) { Text("TIME RECORD / EDIT TIME") }
+            if (showRecord) TimeRecordDialog(record, vm, busy, data.now) { showRecord = false }
         }
         HorizontalDivider()
         Text("Personal estimates only. Not an official Publix app or employer timekeeping record.", style = MaterialTheme.typography.bodySmall)

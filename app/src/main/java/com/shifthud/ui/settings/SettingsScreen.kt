@@ -28,6 +28,8 @@ import com.shifthud.ui.*
         reminderStatus = notifications.reminderStatus()
         onPauseOrDispose { }
     }
+    val preferences = (context.applicationContext as ShiftHudApplication).preferences
+    val autoLunch by preferences.autoLunchSettings.collectAsState(initial = com.shifthud.domain.usecase.AutoLunchSettings())
     val snoozeMinutes by (context.applicationContext as ShiftHudApplication).preferences.snoozeMinutes.collectAsState(initial = 10)
     var input by rememberSaveable(data.threshold) { mutableStateOf(data.threshold.toString()) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
@@ -52,6 +54,22 @@ import com.shifthud.ui.*
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Checkbox(checked = offset in data.warningOffsets, enabled = data.loaded, onCheckedChange = null)
                 Text("$offset ${if (offset == 1) "minute" else "minutes"} before")
+            }
+        }
+        Text("Automatic lunch end", style = MaterialTheme.typography.titleLarge)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text("Automatically end lunch", Modifier.weight(1f))
+            Switch(checked = autoLunch.enabled, enabled = data.loaded && !busy,
+                onCheckedChange = { vm.autoLunch(it, autoLunch.minutes) })
+        }
+        Text("An inferred fallback, marked Auto. Changes apply to future lunches; an existing lunch keeps its captured duration. You can correct its time record.")
+        (com.shifthud.domain.usecase.AUTO_LUNCH_CHOICES + if (preferences.debugSettings) listOf(2) else emptyList()).forEach { minutes ->
+            Row(Modifier.fillMaxWidth().toggleable(value = autoLunch.minutes == minutes,
+                enabled = data.loaded && !busy, role = Role.RadioButton,
+                onValueChange = { vm.autoLunch(autoLunch.enabled, minutes) }),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                RadioButton(selected = autoLunch.minutes == minutes, onClick = null)
+                Text(if (minutes == 2) "2 minutes (debug test)" else "$minutes minutes")
             }
         }
         Text("Lunch snooze duration", style = MaterialTheme.typography.titleLarge)

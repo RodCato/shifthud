@@ -28,6 +28,7 @@ class WidgetRefresh(private val context: Context) {
     suspend fun refresh(mayStartService: Boolean = true, synchronizeService: Boolean = true): Boolean = mutex.withLock {
         try {
             val app = context.applicationContext as ShiftHudApplication
+            app.repository.reconcileAutoLunch()
             val state = app.repository.snapshot().session?.state
             val redraw: suspend () -> Boolean = {
                 try { app.notifications.refresh() }

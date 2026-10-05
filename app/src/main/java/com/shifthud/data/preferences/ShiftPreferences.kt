@@ -2,7 +2,7 @@ package com.shifthud.data.preferences
 import android.content.Context
 import com.shifthud.notification.*
 import com.shifthud.domain.model.WorkSession
-import com.shifthud.domain.usecase.ShiftEngine
+import com.shifthud.domain.usecase.*
 import java.time.Instant
 import org.json.JSONObject
 import org.json.JSONArray
@@ -15,12 +15,23 @@ import kotlinx.coroutines.withContext
 
 private val Context.shiftPreferences by preferencesDataStore(name = "shift_preferences")
 class ShiftPreferences(context: Context, private val onChanged: suspend () -> Unit = {}) {
+    val debugSettings = context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
     private val store = context.shiftPreferences
     private val lunchThreshold = intPreferencesKey("lunch_threshold_minutes")
     val lunchThresholdMinutes: Flow<Int> = store.data.catch { if (it is IOException) emit(emptyPreferences()) else throw it }.map { it[lunchThreshold] ?: 360 }
     suspend fun setLunchThreshold(minutes: Int) {
         require(minutes in 1..1440) { "Enter 1–1440 minutes." }
         store.edit { it[lunchThreshold] = minutes }
+        withContext(NonCancellable) { onChanged() }
+    }
+    private val autoEnabled = booleanPreferencesKey("auto_lunch_enabled")
+    private val autoMinutes = intPreferencesKey("auto_lunch_minutes")
+    val autoLunchSettings: Flow<AutoLunchSettings> = store.data.catch { if (it is IOException) emit(emptyPreferences()) else throw it }.map {
+        AutoLunchSettings(it[autoEnabled] ?: true, (it[autoMinutes] ?: 60).takeIf { n -> n in AUTO_LUNCH_CHOICES || (debugSettings && n == 2) } ?: 60)
+    }
+    suspend fun setAutoLunch(enabled: Boolean, minutes: Int) {
+        require(minutes in AUTO_LUNCH_CHOICES || (debugSettings && minutes == 2))
+        store.edit { it[autoEnabled] = enabled; it[autoMinutes] = minutes }
         withContext(NonCancellable) { onChanged() }
     }
     private val warningOffsets = stringSetPreferencesKey("lunch_warning_offsets")
@@ -48,13 +59,13 @@ class ShiftPreferences(context: Context, private val onChanged: suspend () -> Un
         runCatching {
             val j = JSONObject(encoded)
             LunchAttention(j.getLong("session"), j.getLong("generation"),
-                if (j.has("target")) j.getLong("target") else null, j.getBoolean("posted"))
+                if (j.has("target")) j.getLong("target") else null, j.getBoolean("posted"), j.optLong("revision", 0), j.optBoolean("skipped", false))
         }.getOrNull()
     }
     private fun saveAttention(p: MutablePreferences, state: LunchAttention?) {
         if (state == null) p.remove(attentionHistory)
         else p[attentionHistory] = JSONObject().put("session", state.sessionId).put("generation", state.generation)
-            .put("target", state.targetActiveMillis).put("posted", state.posted).toString()
+            .put("target", state.targetActiveMillis).put("posted", state.posted).put("revision", state.revision).put("skipped", state.skipped).toString()
     }
     suspend fun deliverAttention(session: WorkSession?, now: Instant, engine: ShiftEngine,
                                  allowed: Boolean, post: (LunchAttention, Int) -> Boolean): AttentionDecision {
@@ -89,7 +100,7 @@ class ShiftPreferences(context: Context, private val onChanged: suspend () -> Un
             val previous = p[warningHistory]?.let { encoded -> runCatching {
                 val json = JSONObject(encoded)
                 fun values(key: String): Set<Int> = json.getJSONArray(key).let { array -> (0 until array.length()).map { array.getInt(it) }.toSet() }
-                WarningLedger(json.getLong("session"), WarningSettings(json.getInt("threshold"), values("offsets")), values("consumed"))
+                WarningLedger(json.getLong("session"), WarningSettings(json.getInt("threshold"), values("offsets")), values("consumed"), json.optLong("revision", 0))
             }.getOrNull() }
             decision = evaluateLunchWarning(session, settings(p), previous, now, engine, allowed)
             onEvaluated(decision)
@@ -98,7 +109,7 @@ class ShiftPreferences(context: Context, private val onChanged: suspend () -> Un
             else if (decision.ledger != previous) {
                 val ledger = decision.ledger!!
                 p[warningHistory] = JSONObject().put("session", ledger.sessionId).put("threshold", ledger.settings.threshold)
-                    .put("offsets", JSONArray(ledger.settings.offsets.sorted())).put("consumed", JSONArray(ledger.consumed.sorted())).toString()
+                    .put("offsets", JSONArray(ledger.settings.offsets.sorted())).put("consumed", JSONArray(ledger.consumed.sorted())).put("revision", ledger.revision).toString()
             }
         }
         return decision

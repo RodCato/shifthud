@@ -24,3 +24,10 @@ suspend fun <T> synchronizeActiveRefresh(
     }
     return try { refresh() } finally { stop() }
 }
+
+fun autoLunchRefreshDelayMillis(session: com.shifthud.domain.model.WorkSession, now: java.time.Instant, minuteDelay: Long): Long {
+    val target = session.autoLunchEndTarget?.takeIf { session.state == ShiftState.ON_LUNCH } ?: return minuteDelay
+    val until = Duration.between(now, target).toMillis()
+    // An unsuccessful overdue reconciliation retries at the normal cadence, never a tight loop.
+    return if (until > 0) minOf(minuteDelay, until) else minuteDelay
+}

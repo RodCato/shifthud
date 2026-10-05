@@ -174,7 +174,7 @@ class ShiftNotifications(private val context: Context) {
             }
         }
         diagnostic("attentionCommitted=true receipt=${attention.state?.receipt} posted=${attention.state?.posted} targetActiveMs=${attention.state?.targetActiveMillis}")
-        if (decision.cancel && attention.state?.posted != true) manager.cancel(WARNING_ID)
+        if (attention.corrected || (decision.cancel && attention.state?.posted != true)) manager.cancel(WARNING_ID)
         // A changed preference updates an existing action label silently, never creates another alert.
         attention.state?.takeIf { it.posted }?.let { event ->
             val existing = manager.activeNotifications.firstOrNull {
