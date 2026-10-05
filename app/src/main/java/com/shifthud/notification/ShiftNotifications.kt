@@ -27,8 +27,10 @@ class ShiftNotifications(private val context: Context) {
             setSound(null, null)
             enableVibration(false)
         })
-        manager.createNotificationChannel(NotificationChannel(WARNING_CHANNEL, "Lunch reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
+        if (manager.getNotificationChannel(WARNING_CHANNEL) == null) manager.createNotificationChannel(NotificationChannel(WARNING_CHANNEL, "Lunch reminders", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Reminders for your personal lunch threshold"
+            enableVibration(true)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         })
     }
     fun warningsAllowed(): Boolean = permissionAllowed() && manager.areNotificationsEnabled() &&
@@ -61,6 +63,28 @@ class ShiftNotifications(private val context: Context) {
         return builder.addAction(0, "OPEN", open()).build()
     }
 
+    fun reminder(sessionId: Long, activeWork: Duration, remaining: Duration, receipt: String): Notification =
+        NotificationCompat.Builder(context, WARNING_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_shift).setContentTitle(warningTitle(remaining))
+            .setContentText("You've worked ${activeWork.notificationDuration()}.")
+            .setContentIntent(open()).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setPriority(NotificationCompat.PRIORITY_HIGH).setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            // Sound/vibration are owned by the channel. Never override the user's selection here.
+            .setTimeoutAfter(remaining.toMillis().coerceAtLeast(1))
+            .addExtras(android.os.Bundle().apply { putString(WARNING_RECEIPT, receipt) })
+            .addAction(0, "START LUNCH", action(LunchAction.START_LUNCH, sessionId))
+            .addAction(0, "OPEN", open()).build()
+
+    fun reminderStatus(): ReminderChannelStatus {
+        val channel = manager.getNotificationChannel(WARNING_CHANNEL)
+        return ReminderChannelStatus(permissionAllowed() && manager.areNotificationsEnabled(),
+            channel?.importance, channel?.sound != null, channel?.shouldVibrate() == true)
+    }
+
+    fun reminderSettingsIntent(): Intent = Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+        .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, WARNING_CHANNEL)
+
     suspend fun refresh() {
         createChannels()
         val app = context.applicationContext as ShiftHudApplication
@@ -91,14 +115,7 @@ class ShiftNotifications(private val context: Context) {
                     true
                 } else {
                     val d = app.engine.durations(activeSession, settings.threshold, now)
-                    val notification = NotificationCompat.Builder(context, WARNING_CHANNEL)
-                        .setSmallIcon(R.drawable.ic_stat_shift).setContentTitle(warningTitle(d.lunchRemaining))
-                        .setContentText("You've worked ${d.activeWork.notificationDuration()}.")
-                        .setContentIntent(open()).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_REMINDER)
-                        .setTimeoutAfter(d.lunchRemaining.toMillis().coerceAtLeast(1))
-                        .addExtras(android.os.Bundle().apply { putString(WARNING_RECEIPT, receipt) })
-                        .addAction(0, "START LUNCH", action(LunchAction.START_LUNCH, activeSession.id))
-                        .addAction(0, "OPEN", open()).build()
+                    val notification = reminder(activeSession.id, d.activeWork, d.lunchRemaining, receipt)
                     diagnostic("notifyInvoked=true notificationId=$WARNING_ID channel=$WARNING_CHANNEL receipt=$receipt")
                     manager.notify(WARNING_ID, notification)
                     diagnostic("notifyReturned=true result=posted receipt=$receipt")

@@ -45,7 +45,7 @@ class NotificationInfrastructureTest {
         val manager = context.getSystemService(NotificationManager::class.java)
         assertEquals(NotificationManager.IMPORTANCE_LOW, manager.getNotificationChannel(ActiveShiftService.CHANNEL_ID).importance)
         assertNull(manager.getNotificationChannel(ActiveShiftService.CHANNEL_ID).sound)
-        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, manager.getNotificationChannel(ShiftNotifications.WARNING_CHANNEL).importance)
+        assertEquals(NotificationManager.IMPORTANCE_HIGH, manager.getNotificationChannel(ShiftNotifications.WARNING_CHANNEL).importance)
         val state = ShiftNotificationState("ShiftHUD · Working", "Worked 5h 0m", emptyList(), LunchAction.START_LUNCH)
         val first = notifications.ongoing(state, 1)
         val second = notifications.ongoing(state, 2)

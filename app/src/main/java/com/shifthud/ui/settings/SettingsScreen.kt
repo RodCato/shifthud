@@ -23,9 +23,9 @@ import com.shifthud.ui.*
 @Composable fun SettingsScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean) {
     val context = LocalContext.current
     val notifications = (context.applicationContext as ShiftHudApplication).notifications
-    var warningsAllowed by remember { mutableStateOf(notifications.warningsAllowed()) }
+    var reminderStatus by remember { mutableStateOf(notifications.reminderStatus()) }
     LifecycleResumeEffect(Unit) {
-        warningsAllowed = notifications.warningsAllowed()
+        reminderStatus = notifications.reminderStatus()
         onPauseOrDispose { }
     }
     var input by rememberSaveable(data.threshold) { mutableStateOf(data.threshold.toString()) }
@@ -52,10 +52,16 @@ import com.shifthud.ui.*
                 Text("$offset ${if (offset == 1) "minute" else "minutes"} before")
             }
         }
-        Text(if (warningsAllowed) "Lunch reminders are allowed. Sound and vibration follow your Android notification settings."
-            else "Lunch warnings cannot be shown until notifications and the Lunch reminders channel are allowed. Shift and widget tracking continue.")
-        OutlinedButton(onClick = { context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)) }) {
-            Text("Notification settings")
-        }
+        Text("Lunch Reminder Status", style = MaterialTheme.typography.titleLarge)
+        Text(reminderStatus.description)
+        reminderStatus.advice?.let { Text(it) }
+        Text("Android controls this channel. Your sound, vibration, priority, and Do Not Disturb choices are respected.")
+        OutlinedButton(onClick = {
+            val intent = notifications.reminderSettingsIntent()
+            try { context.startActivity(intent) }
+            catch (_: android.content.ActivityNotFoundException) {
+                context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+            }
+        }) { Text("OPEN NOTIFICATION SETTINGS") }
     }
 }
