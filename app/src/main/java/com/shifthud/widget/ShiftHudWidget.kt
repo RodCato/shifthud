@@ -82,14 +82,25 @@ private fun WidgetContent(data: WidgetState, context: Context, items: List<com.s
         }
         if (expanded && !hasReferences) data.extra?.let { Text(it, style = TextStyle(color = muted, fontSize = 14.sp), maxLines = 2) }
         if (hasReferences) {
-            Column(GlanceModifier.fillMaxWidth().padding(top = 6.dp).clickable(openApp(context, QUICK_FIND_DESTINATION))) {
+            Column(GlanceModifier.fillMaxWidth().padding(top = 8.dp).clickable(openApp(context, QUICK_FIND_DESTINATION))) {
                 if (references.favorites.isNotEmpty()) {
                     Text("★ FAVORITES" + if(references.moreFavorites>0) " · +${references.moreFavorites} more" else "", style=TextStyle(color=muted,fontSize=11.sp,fontWeight=FontWeight.Bold),maxLines=1)
                     references.favorites.forEach { Text(it,style=TextStyle(color=white,fontSize=12.sp),maxLines=1) }
                 }
                 if (references.guide.isNotEmpty()) {
-                    Text("AISLE GUIDE" + if(references.moreGuide>0) " · +${references.moreGuide} more" else "",modifier=GlanceModifier.padding(top=4.dp),style=TextStyle(color=muted,fontSize=11.sp,fontWeight=FontWeight.Bold),maxLines=1)
-                    references.guide.forEach { Text(it,style=TextStyle(color=white,fontSize=12.sp),maxLines=1) }
+                    Text("AISLE GUIDE" + if(references.moreGuide>0) " · +${references.moreGuide} more" else "",modifier=GlanceModifier.padding(top=if (references.favorites.isNotEmpty()) 6.dp else 0.dp),style=TextStyle(color=muted,fontSize=11.sp,fontWeight=FontWeight.Bold),maxLines=1)
+                    references.guide.forEachIndexed { index, entry ->
+                        if (index > 0) {
+                            Box(GlanceModifier.fillMaxWidth().height(1.dp).background(Color(0xFF34473A))) {}
+                        }
+                        Row(GlanceModifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                            Text(entry.location,
+                                modifier = GlanceModifier.width(if (entry.location.toBigIntegerOrNull() != null) 32.dp else 72.dp).padding(end = 8.dp),
+                                style = TextStyle(color = white, fontSize = 13.sp, fontWeight = FontWeight.Bold), maxLines = 2)
+                            Text(entry.categories, modifier = GlanceModifier.defaultWeight(),
+                                style = TextStyle(color = muted, fontSize = 12.sp), maxLines = 2)
+                        }
+                    }
                 }
             }
         }

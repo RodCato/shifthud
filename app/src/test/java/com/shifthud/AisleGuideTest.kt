@@ -22,22 +22,39 @@ class AisleGuideTest {
     @Test fun compactAndNormalStayShiftFocused() {listOf(180f to 200f,280f to 240f).forEach{(w,h)->assertEquals(WidgetReferences(),widgetReferences(listOf(item()),listOf(entry()),w,h,false))}}
     @Test fun expandedPullsFavoriteAndGuideContent() {
         val data=widgetReferences(listOf(item(),item(2,"Not favorite",false)),listOf(entry()),320f,300f,false)
-        assertEquals(listOf("Coconut milk · Aisle 2"),data.favorites);assertEquals(listOf("5  Pasta · Rice"),data.guide)
+        assertEquals(listOf("Coconut milk · Aisle 2"),data.favorites);assertEquals(listOf(WidgetGuideRow("5", "Pasta · Rice")),data.guide)
     }
     @Test fun editsAndUnfavoritingImmediatelyChangeDerivedWidgetData() {
         val old=item()
         assertEquals(listOf("Milk · Frozen"),widgetReferences(listOf(old.copy(name="Milk",aisle="Frozen")),listOf(entry(categories="Soup")),320f,300f,false).favorites)
         assertTrue(widgetReferences(listOf(old.copy(isFavorite=false)),emptyList(),320f,300f,false).favorites.isEmpty())
-        assertEquals(listOf("5  Soup"),widgetReferences(emptyList(),listOf(entry(categories="Soup")),320f,300f,false).guide)
+        assertEquals(listOf(WidgetGuideRow("5", "Soup")),widgetReferences(emptyList(),listOf(entry(categories="Soup")),320f,300f,false).guide)
     }
     @Test fun referenceRowsAreBoundedAndOverflowIndicated() {
         val data=widgetReferences((1L..10L).map{item(it,"Item $it")},(1L..12L).map{entry(it,it.toString())},320f,300f,false)
-        assertEquals(1,data.favorites.size);assertEquals(4,data.guide.size);assertEquals(9,data.moreFavorites);assertEquals(8,data.moreGuide)
+        assertEquals(1,data.favorites.size);assertEquals(2,data.guide.size);assertEquals(9,data.moreFavorites);assertEquals(10,data.moreGuide)
     }
-    @Test fun completedLunchReservesSpaceForCriticalInformation() {assertEquals(2,widgetReferences(emptyList(),(1L..8).map{entry(it,it.toString())},320f,300f,true).guide.size)}
+    @Test fun completedLunchReservesSpaceForCriticalInformation() {assertEquals(1,widgetReferences(emptyList(),(1L..8).map{entry(it,it.toString())},320f,300f,true).guide.size)}
     @Test fun tallerWidgetsShowMoreRows() {
         val data=widgetReferences((1L..4).map{item(it)},(1L..8).map{entry(it,it.toString())},320f,360f,true)
-        assertEquals(2,data.favorites.size);assertEquals(6,data.guide.size)
+        assertEquals(2,data.favorites.size);assertEquals(2,data.guide.size)
+    }
+    @Test fun longCategoriesRemainAvailableForWrappingAndLocationIsSeparate() {
+        val categories = "Cereal, Coffee, Pop Tarts, Rice Crispy Treats"
+        val row = widgetReferences(emptyList(), listOf(entry(aisle="16", categories=categories)), 320f, 300f, false).guide.single()
+        assertEquals("16", row.location)
+        assertEquals("Cereal · Coffee · Pop Tarts · Rice Crispy Treats", row.categories)
+    }
+    @Test fun widgetPreservesNaturalOrderAndNamedLocations() {
+        val rows = widgetReferences(emptyList(), listOf(entry(1,"16"), entry(2,"2"), entry(3,"Frozen")), 320f, 360f, false).guide
+        assertEquals(listOf("2", "16", "Frozen"), rows.map { it.location })
+    }
+    @Test fun tallerWidgetUsesExtraSpaceWithoutHidingOverflow() {
+        val guide = (1L..8).map { entry(it,it.toString()) }
+        val short = widgetReferences(listOf(item()),guide,320f,300f,false)
+        val tall = widgetReferences(listOf(item()),guide,320f,360f,false)
+        assertTrue(tall.guide.size > short.guide.size)
+        assertEquals(guide.size, tall.guide.size + tall.moreGuide)
     }
     @Test fun favoriteOrderingStableAcrossRecentUseChanges() {
         val a=item(1,"Apple");val b=item(2,"Banana")
