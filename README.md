@@ -4,7 +4,7 @@ ShiftHUD is a personal Android work-shift dashboard with a manually entered sche
 
 ## Core features
 
-- Material 3 dashboard, Schedule, and Settings using Navigation Compose.
+- Material 3 Dashboard, Schedule, Quick Find, and Settings using Navigation Compose.
 - Add, edit, delete, and chronologically view upcoming shifts; today's shift is labeled. Add/Edit uses a Material calendar and AM/PM clock pickers with an optional keyboard mode; dates display in the device locale.
 - Clock in automatically links the earliest scheduled shift starting today, ordered by start time then ID. Multiple shifts on a date are supported in the schedule; the earliest is the deterministic dashboard/association choice in this MVP.
 - Unscheduled clock-in, one lunch, clock-out, and completed paid/store totals.
@@ -13,7 +13,7 @@ ShiftHUD is a personal Android work-shift dashboard with a manually entered sche
 
 ## Architecture
 
-One `:app` module. `domain/model` and `domain/usecase` contain Android-independent models and the fixed-clock-testable shift engine. `data/local` contains Room entities, DAO, and database; `data/repository` performs transactional session operations; `data/preferences` owns typed preference access. Compose screens live under `ui/dashboard`, `ui/schedule`, and `ui/settings`. An application container supplies dependencies to a lifecycle ViewModel without a DI framework. Flow updates the UI; a lifecycle-observed tick only triggers recomputation, never timer writes.
+One `:app` module. `domain/model` and `domain/usecase` contain Android-independent models and the fixed-clock-testable shift engine. `data/local` contains Room entities, DAO, and database; `data/repository` performs transactional session operations; `data/preferences` owns typed preference access. Compose screens live under `ui/dashboard`, `ui/schedule`, and `ui/settings`, and `ui/quickfind`. An application container supplies dependencies to a lifecycle ViewModel without a DI framework. Flow updates the UI; a lifecycle-observed tick only triggers recomputation, never timer writes.
 
 The absence of a session represents NOT_STARTED. Persisted sessions use WORKING, ON_LUNCH, COMPLETE. A transaction rechecks active state to prevent double taps from creating duplicate sessions or applying stale transitions. One lunch is supported because the specified schema has one lunch start/end pair; subsequent lunch attempts are rejected. End lunch before clocking out. The latest completed session remains on the dashboard for its clock-out date; historical rows are retained for future history features. Dashboard Time Record also exposes the latest retained session after its clock-out date, with its dates and derived totals.
 
@@ -44,11 +44,11 @@ Manual smoke test: add today's schedule, edit it, clock in, start/end lunch, clo
 
 - MVP-001 — Core + Manual Schedule + Shift Engine [COMPLETE]
 - MVP-002 — Glance Home-Screen Shift HUD [COMPLETE]
-- MVP-003 — Persistent Notification + Lunch Warnings [CURRENT]
-- MVP-004 — Quick Find
+- MVP-003 — Persistent Notification + Lunch Warnings + operational refinements [COMPLETE]
+- MVP-004 — Quick Find [CURRENT]
 - MVP-005 — History / Statistics / Polish
 
-Quick Find, history UI, networking, authentication, automatic import, cloud sync, and analytics remain deferred. MVP-003 notifications and personal lunch reminders are described below.
+History/statistics/polish remain planned for MVP-005. Networking, authentication, automatic import, cloud sync, and analytics are not implemented. Quick Find and MVP-003 operational refinements are described below.
 
 ## Verification for this implementation
 
@@ -317,3 +317,37 @@ The isolated week policy is **Monday 00:00 through next Monday 00:00**, in the d
 These are personal base-rate estimates, not employer payroll. Overtime premiums, taxes, withholding, bonuses, differentials, payroll-specific rounding, rate splitting, configurable week starts, and widget earnings are intentionally deferred.
 
 Gross-pay verification: full `./gradlew build` passed, including **220 tests per variant (440 executions)** and lint (0 errors; 12 existing dependency advisories). Twenty-six added tests cover exact amounts, lunch exclusion/freeze/resumption, all timestamp corrections, active/completed totals, weekly aggregation and boundaries/DST, rounding/large values, effective dates, rate replacement/concurrent updates/reopen, corrupt-history rejection, and unchanged persisted sessions. All existing tests, including Room migration coverage, remain intact. Pixel 9/API 37 upgrade retained 10 sessions and 1 schedule at schema 2. Dashboard showed the existing completed shift and week at $2.74; saving a $16.50 rate effective tomorrow left both unchanged. Rate history survived process restart, and malformed numeric input was rejected without saving. Dashboard and Settings were visually inspected for clipping.
+
+
+## MVP-004 — Quick Find
+
+Quick Find is a personal, local-only memory aid answering “Where is this item in my store?” It is not a replacement for Publix Pro, inventory, stock availability, or official store data. There is no networking, scraping, employer API/authentication, or shipped aisle database. New installations and upgraded installations start with an empty Quick Find collection. User-entered data stays in the existing on-device Room database; Android backup remains disabled.
+
+Open **Quick Find** from the bottom navigation (Material search icon), then type a name, alias, aisle/location, or location note. Search normalizes case with Locale.ROOT and collapses whitespace, including Unicode spaces. Partial substring matching is immediate over the small Flow-backed collection, without search-time database writes or heavyweight full-text indexing. Ranking: exact name → name prefix → exact alias → alias prefix → name contains → alias contains → location/note contains. Favorite, recent use, use count, normalized name, and ID deterministically resolve equal-ranked matches.
+
+An empty query shows all **Favorites** independently of **Recent Finds** (latest eight intentionally selected records). Tapping a compact result opens details and atomically updates `lastUsedAt` and increments `useCount`. Merely appearing in a result or toggling a favorite does not count as use. Details offer Edit, Favorite/Unfavorite, and Delete with confirmation. Favorites and recent metadata persist across restarts.
+
+**Add Item** and **Edit** share one form: required name and text aisle/location, optional note/comma-separated aliases, and favorite. Aliases are whitespace-normalized, lowercased, deduplicated, and stored as a JSON string array in one Room column; the domain model exposes a list for future CSV/JSON backup. Numeric/simple aisle values (4, 12A, 4-5) display with “Aisle”; named departments such as Frozen/Produce display unchanged. No display prefixes are stored. A transaction plus unique normalized-name index prevents duplicate names, including concurrent saves; the form offers **EDIT EXISTING ITEM** instead of silently inserting a duplicate. Multiple items may share a location.
+
+Room **version 3**, explicit **2→3 migration**, adds only `quick_find_items` and its normalized-name unique index. Existing schedule/session tables, timestamps, lunch metadata, pay-rate DataStore, and reminder settings are unchanged. The previous **1→2** migration remains registered so older installations migrate through both steps. The exported schema is committed; no destructive fallback exists. The application container supplies `QuickFindRepository`/`QuickFindViewModel`, with no new DI framework or changes to the shift engine/service/notification architecture.
+
+Normal/expanded widgets place a compact **QUICK FIND** shortcut beside the existing 48dp primary action. Compact widgets omit it. The explicit MainActivity destination intent is distinct from Dashboard/Schedule, supports cold and existing-activity launches, and requests search focus and the keyboard where Android permits. Bottom-navigation entry also focuses search. The widget has no text input, and notifications gain no extra action.
+
+### Device acceptance
+
+1. Upgrade the APK without uninstalling; confirm existing schedule, time records, and pay-rate history.
+2. Open Quick Find and verify focus/keyboard. Add Worcestershire Sauce, location 4, note “Condiments · lower shelf”, aliases “worc, steak sauce”.
+3. Search `worc`, `WORC`, `steak`, and `lower`; verify immediate compact results. Select it, favorite it, close, and clear search. Verify Favorites and Recent Finds.
+4. Edit its location/note and confirm searches reflect the new values. Try adding the same name with different case/whitespace; use EDIT EXISTING ITEM.
+5. Add Honey and Frozen Pizza (location Frozen); confirm “Aisle 2” and “Frozen”, not “Aisle Frozen”. Inspect several compact rows with the keyboard visible.
+6. On a normal/expanded widget tap QUICK FIND with the app stopped and again while it is open on another tab. Verify direct navigation, focus, and keyboard. Confirm compact widgets retain the primary action.
+7. Delete a test record: cancel once, then confirm. Restart and verify saved records/favorites/recents persist.
+8. During an active shift, search/edit items and verify paid time and ongoing notification continue. Check normal lunch/clock-out actions.
+
+MVP-005 retains history/statistics/polish. Quick Find CSV/JSON import/export, cloud sync, fuzzy/misspelling search, and large-data indexing are deferred. The plain domain fields and JSON alias list leave future backup straightforward.
+
+### MVP-004 verification
+
+Full `./gradlew build` passes with **259 tests per variant (518 executions)**, including all prior tests and 39 new Quick Find/search/repository/migration/navigation tests. Lint reports **0 errors and the same 12 existing dependency advisories**. Schema comparison confirms the two existing Room tables are identical between exports 2 and 3. Automated upgrade tests cover both v1→v3 and v2→v3, retaining schedule fields, completed/active session timestamps and lunch/correction metadata, and effective-dated pay history; new Quick Find records survive reopening. A real navigation-controller regression test covers returning to Dashboard after direct widget entry instead of restoring the child stack.
+
+Pixel 9/API 37 emulator upgrade preserved all **10 preexisting WorkSessions and 1 schedule** field-for-field. Pay-rate and reminder preference files retained identical SHA-256 hashes (only Glance's cached layout changed). Quick Find began empty. Manual acceptance covered item creation, upper/lowercase/alias/note search, favorites/recents, duplicate-name warning and Edit Existing, location/note edits, numeric/named location labels, multiple compact results above the keyboard, deletion cancel/confirm, and persistence after APK replacement/process recreation. The actual widget shortcut opened focused search with the keyboard after background process death and during an active shift. Android force-stop disables the widget until the app is reopened; ordinary process-death recovery worked. While searching during a test shift, the foreground service and silent ongoing notification remained active; returning to Dashboard showed paid time and gross advancing normally. Physical-device/OEM keyboard and launcher variations remain for the documented acceptance checklist; no physical device was connected.

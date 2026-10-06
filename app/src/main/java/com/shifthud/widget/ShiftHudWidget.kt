@@ -1,8 +1,6 @@
 package com.shifthud.widget
 
 import android.content.Context
-import android.content.Intent
-import androidx.core.net.toUri
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpSize
@@ -16,7 +14,6 @@ import androidx.glance.layout.*
 import androidx.glance.text.*
 import androidx.glance.unit.ColorProvider
 import androidx.work.WorkManager
-import com.shifthud.MainActivity
 import com.shifthud.ShiftHudApplication
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -55,13 +52,7 @@ class ShiftHudWidget : GlanceAppWidget() {
     }
 }
 
-private fun openApp(context: Context, destination: String): Action = actionStartActivity(
-    Intent(context, MainActivity::class.java).apply {
-        data = "shifthud://widget/$destination".toUri()
-        putExtra(MainActivity.DESTINATION, destination)
-        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-    }
-)
+private fun openApp(context: Context, destination: String): Action = actionStartActivity(widgetDestinationIntent(context, destination))
 
 @Composable
 private fun WidgetContent(data: WidgetState, context: Context) {
@@ -87,8 +78,17 @@ private fun WidgetContent(data: WidgetState, context: Context) {
         // Refresh is always user-driven here; periodic work may be deferred by Android.
         Text(data.updated + " · ↻", modifier = GlanceModifier.fillMaxWidth().clickable(widgetAction(WidgetCommand(WidgetOperation.REFRESH, 0, LocalDate.now()))),
             style = TextStyle(color = muted, fontSize = 12.sp), maxLines = 1)
-        Button(data.actionLabel, onClick = primary, modifier = GlanceModifier.fillMaxWidth().height(48.dp),
-            colors = ButtonDefaults.buttonColors(backgroundColor = ColorProvider(Color(0xFF9DD5AA)), contentColor = ColorProvider(Color(0xFF12331D))))
+        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Button(data.actionLabel, onClick = primary, modifier = GlanceModifier.defaultWeight().height(48.dp),
+                colors = ButtonDefaults.buttonColors(backgroundColor = ColorProvider(Color(0xFF9DD5AA)), contentColor = ColorProvider(Color(0xFF12331D))))
+            if (showsQuickFind(size.width.value, size.height.value)) {
+                Spacer(GlanceModifier.width(6.dp))
+                Column(GlanceModifier.width(72.dp).height(48.dp).clickable(openApp(context, QUICK_FIND_DESTINATION)),
+                    verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("QUICK FIND", style = TextStyle(color = white, fontSize = 12.sp, fontWeight = FontWeight.Bold), maxLines = 2)
+                }
+            }
+        }
         if (expanded && data.status == WidgetStatus.WORKING) {
             Text("Open app to clock out ›", modifier = GlanceModifier.fillMaxWidth().padding(top = 8.dp).clickable(openApp(context, "Dashboard")),
                 style = TextStyle(color = muted, fontSize = 14.sp), maxLines = 1)
