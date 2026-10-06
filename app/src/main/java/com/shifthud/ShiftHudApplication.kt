@@ -10,6 +10,7 @@ import com.shifthud.widget.WidgetRefresh
 
 class ShiftHudApplication : Application() {
     val notifications by lazy { com.shifthud.notification.ShiftNotifications(this) }
+    val payRates by lazy { com.shifthud.data.preferences.PayRatePreferences(this) }
     val engine by lazy { ShiftEngine() }
     private val database by lazy { Room.databaseBuilder(this, ShiftDatabase::class.java, "shifthud.db").addMigrations(com.shifthud.data.local.MIGRATION_1_2).build() }
     val widgetRefresh by lazy { WidgetRefresh(this) }

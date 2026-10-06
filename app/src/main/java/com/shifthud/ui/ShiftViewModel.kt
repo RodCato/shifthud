@@ -6,12 +6,18 @@ import com.shifthud.domain.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.time.*
+import com.shifthud.domain.pay.*
 
-data class ShiftUiState(val schedule: List<ScheduledShift> = emptyList(), val session: WorkSession? = null, val threshold: Int = 360, val now: Instant = Instant.now(), val loaded: Boolean = false, val warningOffsets: Set<Int> = com.shifthud.notification.DEFAULT_WARNING_OFFSETS)
+data class PayData(val rates: List<PayRate> = emptyList(), val sessions: List<WorkSession> = emptyList(), val error: String? = null)
+
+data class ShiftUiState(val schedule: List<ScheduledShift> = emptyList(), val session: WorkSession? = null, val threshold: Int = 360, val now: Instant = Instant.now(), val loaded: Boolean = false, val warningOffsets: Set<Int> = com.shifthud.notification.DEFAULT_WARNING_OFFSETS, val pay: PayData = PayData())
 class ShiftViewModel(private val app: ShiftHudApplication) : ViewModel() {
     val engine = app.engine
     private val ticks = flow { while (true) { emit(Instant.now()); delay(1000) } }
-    val state = combine(app.repository.schedule, app.repository.latestSession, app.preferences.warningSettings, ticks) { schedule, session, settings, now -> ShiftUiState(schedule, session, settings.threshold, now, true, settings.offsets) }
+    private val payData = combine(app.payRates.rates, app.repository.sessions) { rates, sessions -> PayData(rates, sessions) }
+        .catch { emit(PayData(error = "Pay estimates unavailable. Could not read pay-rate history or time records.")) }
+    private val shiftState = combine(app.repository.schedule, app.repository.latestSession, app.preferences.warningSettings, ticks) { schedule, session, settings, now -> ShiftUiState(schedule, session, settings.threshold, now, true, settings.offsets) }
+    val state = combine(shiftState, payData) { shift, pay -> shift.copy(pay = pay) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ShiftUiState())
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
@@ -27,6 +33,7 @@ class ShiftViewModel(private val app: ShiftHudApplication) : ViewModel() {
             finally { _busy.value = false }
         }
     }
+    fun saveRate(rate: PayRate, done: () -> Unit) = perform { app.payRates.save(rate); done() }
     fun clockIn() = perform { app.repository.clockIn() }
     fun startLunch(s: WorkSession) = perform { app.repository.transition(s.id, s.state, engine::startLunch) }
     fun endLunch(s: WorkSession) = perform { app.repository.transition(s.id, s.state, engine::endLunch) }

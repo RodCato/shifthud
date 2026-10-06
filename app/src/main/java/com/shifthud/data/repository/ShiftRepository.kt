@@ -19,6 +19,7 @@ class ShiftRepository(
 ) {
     private val dao = db.shifts()
     val schedule = dao.observeSchedule().map { rows -> rows.map { it.model() } }
+    val sessions = dao.observeSessions().map { rows -> rows.map { it.model() } }
     val latestSession = dao.observeLatest().map { it?.model() }
 
     suspend fun save(shift: ScheduledShift) = changed { dao.save(shift.entity()) }
