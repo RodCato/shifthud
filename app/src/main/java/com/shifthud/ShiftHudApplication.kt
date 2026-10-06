@@ -1,6 +1,7 @@
 package com.shifthud
 import android.app.Application
 import androidx.room.Room
+import kotlinx.coroutines.flow.first
 import com.shifthud.data.local.ShiftDatabase
 import com.shifthud.data.preferences.ShiftPreferences
 import com.shifthud.data.repository.ShiftRepository
@@ -8,9 +9,11 @@ import com.shifthud.domain.usecase.ShiftEngine
 import com.shifthud.widget.WidgetRefresh
 
 class ShiftHudApplication : Application() {
+    val notifications by lazy { com.shifthud.notification.ShiftNotifications(this) }
+    val payRates by lazy { com.shifthud.data.preferences.PayRatePreferences(this) }
     val engine by lazy { ShiftEngine() }
-    private val database by lazy { Room.databaseBuilder(this, ShiftDatabase::class.java, "shifthud.db").build() }
+    private val database by lazy { Room.databaseBuilder(this, ShiftDatabase::class.java, "shifthud.db").addMigrations(com.shifthud.data.local.MIGRATION_1_2).build() }
     val widgetRefresh by lazy { WidgetRefresh(this) }
-    val repository by lazy { ShiftRepository(database, engine, onChanged = { widgetRefresh.refresh() }) }
+    val repository by lazy { ShiftRepository(database, engine, onChanged = { widgetRefresh.refresh() }, autoLunchSettings = { preferences.autoLunchSettings.first() }) }
     val preferences by lazy { ShiftPreferences(this, onChanged = { widgetRefresh.refresh() }) }
 }

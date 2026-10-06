@@ -28,8 +28,12 @@ class WidgetRefresh(private val context: Context) {
     suspend fun refresh(mayStartService: Boolean = true, synchronizeService: Boolean = true): Boolean = mutex.withLock {
         try {
             val app = context.applicationContext as ShiftHudApplication
+            app.repository.reconcileAutoLunch()
             val state = app.repository.snapshot().session?.state
             val redraw: suspend () -> Boolean = {
+                try { app.notifications.refresh() }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) { Log.w("ShiftHUDNotification", "Notification update deferred", e) }
                 _now.value = Instant.now()
                 val installed = GlanceAppWidgetManager(context).getGlanceIds(ShiftHudWidget::class.java).isNotEmpty()
                 if (synchronizeService || !requiresActiveRefresh(state)) configureWork(installed)

@@ -17,7 +17,10 @@ fun ScheduledShift.entity() = ScheduledShiftEntity(id, date.toEpochDay(), schedu
 data class WorkSessionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0, val scheduledShiftId: Long?,
     val clockIn: Long, val lunchStart: Long?, val lunchEnd: Long?, val clockOut: Long?, val state: String,
+    val autoLunchMinutes: Int? = null,
+    @ColumnInfo(defaultValue = "0") val lunchEndAutomatic: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val correctionRevision: Long = 0,
 ) {
-    fun model() = WorkSession(id, scheduledShiftId, Instant.ofEpochMilli(clockIn), lunchStart?.let(Instant::ofEpochMilli), lunchEnd?.let(Instant::ofEpochMilli), clockOut?.let(Instant::ofEpochMilli), ShiftState.valueOf(state))
+    fun model() = WorkSession(id, scheduledShiftId, Instant.ofEpochMilli(clockIn), lunchStart?.let(Instant::ofEpochMilli), lunchEnd?.let(Instant::ofEpochMilli), clockOut?.let(Instant::ofEpochMilli), ShiftState.valueOf(state), autoLunchMinutes, lunchEndAutomatic, correctionRevision)
 }
-fun WorkSession.entity() = WorkSessionEntity(id, scheduledShiftId, clockIn.toEpochMilli(), lunchStart?.toEpochMilli(), lunchEnd?.toEpochMilli(), clockOut?.toEpochMilli(), state.name)
+fun WorkSession.entity() = WorkSessionEntity(id, scheduledShiftId, clockIn.toEpochMilli(), lunchStart?.toEpochMilli(), lunchEnd?.toEpochMilli(), clockOut?.toEpochMilli(), state.name, autoLunchMinutes, lunchEndAutomatic, correctionRevision)
