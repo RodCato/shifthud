@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.first
 import java.time.*
 
 class ShiftHudWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Responsive(setOf(COMPACT, NORMAL, EXPANDED))
+    override val sizeMode = SizeMode.Responsive(setOf(COMPACT, NORMAL, EXPANDED, TALL))
     // Room + Preferences DataStore are authoritative. Glance stores no session or timer state.
     override val stateDefinition = null
 
@@ -34,6 +34,8 @@ class ShiftHudWidget : GlanceAppWidget() {
         fun state(schedule: List<com.shifthud.domain.model.ScheduledShift>, session: com.shifthud.domain.model.WorkSession?, limit: Int, now: Instant) =
             factory.create(schedule, session, limit, now, ZoneId.systemDefault(), context.resources.configuration.locales[0], android.text.format.DateFormat.is24HourFormat(context))
         val initialState = state(initial.schedule, initial.session, threshold, Instant.now())
+        val initialItems = app.quickFind.items.first()
+        val initialGuide = app.quickFind.guide.first()
         provideContent {
             // Observe during Glance's finite composition session: updateAll alone does not restart it.
             val updates = remember {
@@ -42,12 +44,15 @@ class ShiftHudWidget : GlanceAppWidget() {
                 }
             }
             val data by updates.collectAsState(initialState)
-            WidgetContent(data, context)
+            val items by app.quickFind.items.collectAsState(initialItems)
+            val guide by app.quickFind.guide.collectAsState(initialGuide)
+            WidgetContent(data, context, items, guide)
         }
     }
     companion object {
         val COMPACT = DpSize(180.dp, 200.dp)
         val NORMAL = DpSize(280.dp, 240.dp)
+        val TALL = DpSize(320.dp, 360.dp)
         val EXPANDED = DpSize(320.dp, 300.dp)
     }
 }
@@ -55,10 +60,12 @@ class ShiftHudWidget : GlanceAppWidget() {
 private fun openApp(context: Context, destination: String): Action = actionStartActivity(widgetDestinationIntent(context, destination))
 
 @Composable
-private fun WidgetContent(data: WidgetState, context: Context) {
+private fun WidgetContent(data: WidgetState, context: Context, items: List<com.shifthud.domain.model.QuickFindItem>, guide: List<com.shifthud.domain.model.AisleGuideEntry>) {
     val size = LocalSize.current
     val normal = size.width >= 280.dp && size.height >= 240.dp
     val expanded = size.width >= 320.dp && size.height >= 300.dp
+    val references = widgetReferences(items, guide, size.width.value, size.height.value, data.completedLunch != null)
+    val hasReferences = references.favorites.isNotEmpty() || references.guide.isNotEmpty()
     val white = ColorProvider(Color(0xFFF1F5EF))
     val muted = ColorProvider(Color(0xFFBACBBE))
     val primary = data.command?.let { widgetAction(it) } ?: openApp(context, data.destination)
@@ -66,14 +73,26 @@ private fun WidgetContent(data: WidgetState, context: Context) {
         Text("SHIFT HUD  ›", modifier = GlanceModifier.fillMaxWidth().clickable(openApp(context, "Dashboard")),
             style = TextStyle(color = muted, fontSize = 14.sp, fontWeight = FontWeight.Bold), maxLines = 1)
         Spacer(GlanceModifier.height(6.dp))
-        Text(data.headline, style = TextStyle(color = white, fontSize = if (normal) 20.sp else 16.sp, fontWeight = FontWeight.Bold), maxLines = 2)
+        Text(data.headline, style = TextStyle(color = white, fontSize = if (expanded && hasReferences) 18.sp else if (normal) 20.sp else 16.sp, fontWeight = FontWeight.Bold), maxLines = if (hasReferences) 1 else 2)
         Spacer(GlanceModifier.height(4.dp))
-        Text(data.detailForSize(normal), style = TextStyle(color = white, fontSize = if (!normal && data.completedLunch != null) 12.sp else 14.sp),
+        Text(data.detailForSize(normal), style = TextStyle(color = white, fontSize = if (hasReferences || (!normal && data.completedLunch != null)) 12.sp else 14.sp),
             maxLines = if (data.completedLunch != null) 3 else 2)
         if (normal) {
-            data.scheduledOut?.let { Text(it, style = TextStyle(color = muted, fontSize = 14.sp), maxLines = 2) }
+            data.scheduledOut?.let { Text(it, style = TextStyle(color = muted, fontSize = if (hasReferences) 12.sp else 14.sp), maxLines = if (hasReferences) 1 else 2) }
         }
-        if (expanded) data.extra?.let { Text(it, style = TextStyle(color = muted, fontSize = 14.sp), maxLines = 2) }
+        if (expanded && !hasReferences) data.extra?.let { Text(it, style = TextStyle(color = muted, fontSize = 14.sp), maxLines = 2) }
+        if (hasReferences) {
+            Column(GlanceModifier.fillMaxWidth().padding(top = 6.dp).clickable(openApp(context, QUICK_FIND_DESTINATION))) {
+                if (references.favorites.isNotEmpty()) {
+                    Text("★ FAVORITES" + if(references.moreFavorites>0) " · +${references.moreFavorites} more" else "", style=TextStyle(color=muted,fontSize=11.sp,fontWeight=FontWeight.Bold),maxLines=1)
+                    references.favorites.forEach { Text(it,style=TextStyle(color=white,fontSize=12.sp),maxLines=1) }
+                }
+                if (references.guide.isNotEmpty()) {
+                    Text("AISLE GUIDE" + if(references.moreGuide>0) " · +${references.moreGuide} more" else "",modifier=GlanceModifier.padding(top=4.dp),style=TextStyle(color=muted,fontSize=11.sp,fontWeight=FontWeight.Bold),maxLines=1)
+                    references.guide.forEach { Text(it,style=TextStyle(color=white,fontSize=12.sp),maxLines=1) }
+                }
+            }
+        }
         Spacer(GlanceModifier.defaultWeight())
         // Refresh is always user-driven here; periodic work may be deferred by Android.
         Text(data.updated + " · ↻", modifier = GlanceModifier.fillMaxWidth().clickable(widgetAction(WidgetCommand(WidgetOperation.REFRESH, 0, LocalDate.now()))),
@@ -89,7 +108,7 @@ private fun WidgetContent(data: WidgetState, context: Context) {
                 }
             }
         }
-        if (expanded && data.status == WidgetStatus.WORKING) {
+        if (expanded && !hasReferences && data.status == WidgetStatus.WORKING) {
             Text("Open app to clock out ›", modifier = GlanceModifier.fillMaxWidth().padding(top = 8.dp).clickable(openApp(context, "Dashboard")),
                 style = TextStyle(color = muted, fontSize = 14.sp), maxLines = 1)
         }

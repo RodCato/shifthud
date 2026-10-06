@@ -7,12 +7,12 @@ import com.shifthud.domain.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
-data class QuickFindState(val items: List<QuickFindItem> = emptyList(), val query: String = "", val results: QuickFindResults = QuickFindResults(), val loaded: Boolean = false)
+data class QuickFindState(val items: List<QuickFindItem> = emptyList(), val query: String = "", val results: QuickFindResults = QuickFindResults(), val loaded: Boolean = false, val guide: List<AisleGuideEntry> = emptyList(), val guideMatches: List<AisleGuideEntry> = emptyList())
 class QuickFindViewModel(private val repository: QuickFindRepository) : ViewModel() {
     val query = MutableStateFlow("")
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
-    val state = combine(repository.items, query) { items, query -> QuickFindState(items, query, searchQuickFind(items, query), true) }
+    val state = combine(repository.items, repository.guide, query) { items, guide, query -> QuickFindState(items, query, searchQuickFind(items, query), true, searchAisleGuide(guide, ""), searchAisleGuide(guide, query)) }
         .catch { _error.value = "Could not load saved items. Reopen Quick Find to try again." }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), QuickFindState())
     private val _busy = MutableStateFlow(false)
@@ -23,6 +23,12 @@ class QuickFindViewModel(private val repository: QuickFindRepository) : ViewMode
         catch (e: CancellationException) { throw e }
         catch (e: Exception) { result(e) }
     }
+    fun saveGuide(id: Long?, aisle: String, categories: String, result: (String?) -> Unit) = action {
+        try { repository.saveGuide(id,aisle,categories);result(null) }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) { result(e.message ?: "Could not save aisle guide.") }
+    }
+    fun deleteGuide(id: Long, done: () -> Unit) = action { repository.deleteGuide(id);done() }
     fun select(id: Long) = action { repository.select(id) }
     fun favorite(id: Long, favorite: Boolean) = action { repository.favorite(id, favorite) }
     fun delete(id: Long, done: () -> Unit) = action { repository.delete(id); done() }

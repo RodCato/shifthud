@@ -21,10 +21,10 @@ import java.time.*
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[35],application=Application::class)
-class QuickFindMigrationTest {
-    @Test fun versionTwoUpgradePreservesFullRecordsAndPayHistoryAndNewItemsSurviveReopen()=runBlocking {
+class AisleGuideMigrationTest {
+    @Test fun versionThreeUpgradePreservesSessionsFavoritesAliasesUsageAndPayHistory()=runBlocking {
         val context=RuntimeEnvironment.getApplication()
-        val name="quick-find-migration.db"
+        val name="aisle-guide-migration.db"
         context.deleteDatabase(name)
         val rateFile=File.createTempFile("migration-pay", ".preferences_pb").apply{delete()}
         var scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
@@ -33,7 +33,7 @@ class QuickFindMigrationTest {
             pay.save(PayRate(LocalDate.of(2026,9,27),1650));pay.save(PayRate(LocalDate.of(2026,11,1),1700))
             val beforePay=pay.rates.first()
             scope.coroutineContext.job.cancelAndJoin()
-            val schemaFile=listOf(File("schemas/com.shifthud.data.local.ShiftDatabase/2.json"),File("app/schemas/com.shifthud.data.local.ShiftDatabase/2.json")).first{it.exists()}
+            val schemaFile=listOf(File("schemas/com.shifthud.data.local.ShiftDatabase/3.json"),File("app/schemas/com.shifthud.data.local.ShiftDatabase/3.json")).first{it.exists()}
             val schema=JSONObject(schemaFile.readText()).getJSONObject("database")
             val file=context.getDatabasePath(name);file.parentFile!!.mkdirs()
             SQLiteDatabase.openOrCreateDatabase(file,null).use {old ->
@@ -49,7 +49,8 @@ class QuickFindMigrationTest {
                 old.execSQL("INSERT INTO scheduled_shifts VALUES (7, 20731, 14400, 46800, 60, 'Keep schedule')")
                 old.execSQL("INSERT INTO work_sessions VALUES (10, 7, 1000, 2000, 3000, 4000, 'COMPLETE', 60, 1, 3)")
                 old.execSQL("INSERT INTO work_sessions VALUES (11, NULL, 5000, 6000, NULL, NULL, 'ON_LUNCH', 45, 0, 2)")
-                old.version=2
+                old.execSQL("INSERT INTO quick_find_items VALUES (21, 'Honey', 'honey', '2', 'Near syrup', '[\"sweetener\"]', 1, 1000, 2000, 3000, 7)")
+                old.version=3
             }
             var quickId=0L
             repeat(2) {pass ->
@@ -67,8 +68,12 @@ class QuickFindMigrationTest {
                     assertNull(active.lunchEnd);assertNull(active.clockOut);assertEquals("ON_LUNCH",active.state)
                     assertEquals(45,active.autoLunchMinutes);assertFalse(active.lunchEndAutomatic);assertEquals(2L,active.correctionRevision)
                     val quick=QuickFindRepository(db)
-                    if(pass==0) {assertTrue(quick.items.first().isEmpty());quickId=quick.save(null,"Honey","2","Near syrup","sweetener",true);quick.select(quickId)}
-                    else {val item=quick.items.first().single();assertEquals(quickId,item.id);assertEquals("Honey",item.name);assertTrue(item.isFavorite);assertEquals(1L,item.useCount)}
+                    val item=quick.items.first().single()
+                    assertEquals(21L,item.id);assertEquals("Honey",item.name);assertEquals("2",item.aisle);assertEquals("Near syrup",item.locationNote)
+                    assertEquals(listOf("sweetener"),item.aliases);assertTrue(item.isFavorite);assertEquals(7L,item.useCount)
+                    assertEquals(Instant.ofEpochMilli(1000),item.createdAt);assertEquals(Instant.ofEpochMilli(2000),item.updatedAt);assertEquals(Instant.ofEpochMilli(3000),item.lastUsedAt)
+                    if(pass==0) {assertTrue(quick.guide.first().isEmpty());quickId=quick.saveGuide(null,"5","Pasta, Rice")}
+                    else {val guide=quick.guide.first().single();assertEquals(quickId,guide.id);assertEquals("5",guide.aisle);assertEquals("Pasta, Rice",guide.categories)}
                     assertEquals(4,db.openHelper.readableDatabase.version)
                 } finally {db.close()}
             }

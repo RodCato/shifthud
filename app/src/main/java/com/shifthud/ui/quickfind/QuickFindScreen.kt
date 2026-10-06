@@ -26,13 +26,16 @@ fun QuickFindScreen(vm: QuickFindViewModel, focusRequest: Int) {
     var editing by rememberSaveable { mutableStateOf(false) }
     var editId by rememberSaveable { mutableStateOf<Long?>(null) }
     var deleting by rememberSaveable { mutableStateOf(false) }
+    var guideEditing by rememberSaveable { mutableStateOf(false) }
+    var guideId by rememberSaveable { mutableStateOf<Long?>(null) }
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     var lastFocusRequest by rememberSaveable { mutableIntStateOf(-1) }
     LaunchedEffect(focusRequest) {
-        if (lastFocusRequest != focusRequest) { selectedId=null;editing=false;deleting=false;lastFocusRequest=focusRequest }
-        if (!editing && selectedId == null) { focus.requestFocus(); keyboard?.show() }
+        if (lastFocusRequest != focusRequest) { selectedId=null;editing=false;guideEditing=false;deleting=false;lastFocusRequest=focusRequest }
+        if (!editing && !guideEditing && selectedId == null) { focus.requestFocus(); keyboard?.show() }
     }
+    fun editGuide(id: Long?) { guideId=id;guideEditing=true;keyboard?.hide() }
     fun edit(id: Long?) { selectedId=null;editId=id;editing=true;keyboard?.hide() }
     Column(Modifier.fillMaxSize().imePadding().padding(horizontal=16.dp)) {
         Text("QUICK FIND",style=MaterialTheme.typography.headlineSmall,modifier=Modifier.padding(top=12.dp,bottom=8.dp))
@@ -40,28 +43,38 @@ fun QuickFindScreen(vm: QuickFindViewModel, focusRequest: Int) {
             modifier=Modifier.fillMaxWidth().focusRequester(focus),
             trailingIcon={if(data.query.isNotEmpty()) TextButton(onClick={vm.query.value=""}) {Text("Clear")}})
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
+            TextButton(onClick={editGuide(null)},enabled=data.loaded && !busy){Text("+ ADD AISLE")}
             TextButton(onClick={edit(null)},enabled=data.loaded && !busy){Text("+ ADD ITEM")}
         }
         error?.let { Text(it,color=MaterialTheme.colorScheme.error);TextButton(onClick=vm::clearError){Text("Dismiss")} }
         if (!data.loaded) LinearProgressIndicator(Modifier.fillMaxWidth())
         LazyColumn(Modifier.weight(1f),contentPadding=PaddingValues(bottom=16.dp)) {
-            if(data.loaded && data.items.isEmpty()) item {
-                Text("No saved items yet.",style=MaterialTheme.typography.titleMedium)
-                Text("Save the items and locations you don’t want to keep looking up.")
-                Button(onClick={edit(null)},enabled=!busy){Text("ADD FIRST ITEM")}
-            } else if(normalizeQuickFind(data.query).isNotEmpty()) {
-                if(data.results.matches.isEmpty()) item {Text("No matching items. Try another name, alias, or location.")}
+            if(normalizeQuickFind(data.query).isNotEmpty()) {
+                if(data.loaded && data.results.matches.isEmpty() && data.guideMatches.isEmpty()) item {Text("No matches. Try another name, category, or location.")}
                 items(data.results.matches,key={"match-${it.id}"}) { item -> QuickFindRow(item,!busy) {selectedId=item.id;keyboard?.hide();vm.select(item.id)} }
+                if(data.guideMatches.isNotEmpty()) item {Text("AISLE GUIDE",style=MaterialTheme.typography.labelLarge,modifier=Modifier.padding(vertical=12.dp))}
+                items(data.guideMatches,key={"guide-match-${it.id}"}) { entry -> AisleGuideRow(entry,!busy) {editGuide(entry.id)} }
             } else {
+                if(data.loaded && data.items.isEmpty()) item {
+                    Text("No saved items yet.",style=MaterialTheme.typography.titleMedium)
+                    Text("Save the items and locations you don’t want to keep looking up.")
+                    Button(onClick={edit(null)},enabled=!busy){Text("ADD FIRST ITEM")}
+                }
                 item {Text("FAVORITES",style=MaterialTheme.typography.labelLarge,modifier=Modifier.padding(vertical=8.dp))}
                 if(data.results.favorites.isEmpty()) item {Text("Favorite an item to keep it here.")}
                 items(data.results.favorites,key={"favorite-${it.id}"}) { item -> QuickFindRow(item,!busy) {selectedId=item.id;keyboard?.hide();vm.select(item.id)} }
+                item {Text("AISLE GUIDE",style=MaterialTheme.typography.labelLarge,modifier=Modifier.padding(vertical=12.dp))}
+                if(data.guide.isEmpty()) item {Text("No aisle mappings yet. Use + ADD AISLE to save your store’s categories.")}
+                items(data.guide,key={"guide-${it.id}"}) { entry -> AisleGuideRow(entry,!busy) {editGuide(entry.id)} }
                 item {Text("RECENT FINDS",style=MaterialTheme.typography.labelLarge,modifier=Modifier.padding(vertical=12.dp))}
                 if(data.results.recent.isEmpty()) item {Text("Select a result to keep it in Recent Finds.")}
                 items(data.results.recent,key={"recent-${it.id}"}) { item -> QuickFindRow(item,!busy) {selectedId=item.id;keyboard?.hide();vm.select(item.id)} }
             }
             item {Text("Personal, local-only notes. Not inventory or official store data.",style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(top=16.dp))}
         }
+    }
+    if(guideEditing && data.loaded) key(guideId) {
+        AisleGuideEditor(data.guide.firstOrNull {it.id==guideId},vm,busy) {guideEditing=false}
     }
     val selected=data.items.firstOrNull {it.id==selectedId}
     if(selected!=null) AlertDialog(onDismissRequest={selectedId=null;deleting=false},title={Text(selected.name)},text={
