@@ -5,6 +5,11 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ShiftDao {
+    @Query("SELECT * FROM work_sessions WHERE clockIn >= :start AND clockIn < :endExclusive ORDER BY clockIn, id")
+    fun observeSessionsBetween(start: Long, endExclusive: Long): Flow<List<WorkSessionEntity>>
+    @Query("SELECT * FROM scheduled_shifts WHERE date >= :start AND date < :endExclusive ORDER BY date, scheduledStart, id")
+    fun observeScheduleBetween(start: Long, endExclusive: Long): Flow<List<ScheduledShiftEntity>>
+    @Query("SELECT * FROM work_sessions WHERE id = :id") fun observeSession(id: Long): Flow<WorkSessionEntity?>
     @Query("SELECT * FROM work_sessions ORDER BY id") fun observeSessions(): Flow<List<WorkSessionEntity>>
     @Query("SELECT * FROM scheduled_shifts ORDER BY date, scheduledStart, id") fun observeSchedule(): Flow<List<ScheduledShiftEntity>>
     @Query("SELECT * FROM scheduled_shifts WHERE date = :date ORDER BY scheduledStart, id LIMIT 1") suspend fun today(date: Long): ScheduledShiftEntity?

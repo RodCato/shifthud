@@ -15,6 +15,9 @@ import com.shifthud.ui.*
 import java.time.*
 
 @Composable fun DashboardScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean) {
+    val calendar by vm.calendar.collectAsState()
+    LaunchedEffect(Unit) { vm.calendarMonth(YearMonth.now()) }
+    var showWeek by remember { mutableStateOf(false) }
     var showRecords by remember { mutableStateOf(false) }
     var showPrevious by remember { mutableStateOf(false) }
     var recordId by remember { mutableStateOf<Long?>(null) }
@@ -75,7 +78,7 @@ import java.time.*
         OutlinedButton(onClick = { showPrevious = true }, enabled = !busy) { Text("ADD PREVIOUS SHIFT") }
         if (showRecords) AlertDialog(onDismissRequest = { showRecords = false }, title = { Text("Time records") }, text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                (data.pay.sessions.filter { it.manuallyEntered } + listOfNotNull(data.session)).distinctBy { it.id }
+                ((calendar.sessions + data.pay.sessions).filter { it.manuallyEntered } + listOfNotNull(data.session)).distinctBy { it.id }
                     .sortedByDescending { it.clockIn }.forEach { record ->
                         val start = record.clockIn.atZone(zone)
                         TextButton(onClick = { recordId = record.id; showRecords = false }) {
@@ -84,20 +87,22 @@ import java.time.*
                     }
             }
         }, confirmButton = { TextButton(onClick = { showRecords = false }) { Text("Close") } })
-        (data.pay.sessions.firstOrNull { it.id == recordId } ?: data.session?.takeIf { it.id == recordId })?.let { record ->
-            TimeRecordDialog(record, vm, busy, data.now) { recordId = null }
+        recordId?.let { id ->
+            val record by remember(id) { vm.record(id) }.collectAsState(initial = null)
+            record?.let { TimeRecordDialog(it, vm, busy, data.now) { recordId = null } }
         }
         if (showPrevious) PreviousShiftDialog(data, vm, busy, dismiss = { showPrevious = false }, openRecord = {
             recordId = it; showPrevious = false
         })
         HorizontalDivider()
-        Text(WORK_WEEK_LABEL, style = MaterialTheme.typography.titleMedium)
-        if (data.pay.rates.isNotEmpty()) {
-            val week = estimator.week(data.pay.sessions, data.pay.rates, data.now, zone)
-            Text("Paid: ${week.paid.display()}")
-            Text("Est. gross: ${money(week.grossCents, locale)}", style = MaterialTheme.typography.titleLarge)
-        }
-        data.pay.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        val week = estimator.weekBreakdown(data.pay.sessions, data.pay.rates, data.now, zone)
+        TextButton(enabled = data.pay.loaded, onClick = { showWeek = true }) { Text(WORK_WEEK_LABEL, style = MaterialTheme.typography.titleMedium) }
+        if (data.pay.loaded) {
+            Text("Paid: ${com.shifthud.domain.calendar.recordDuration(week.paid)}")
+            Text("Est. gross: ${week.grossCents?.let { money(it, locale) } ?: "Unavailable"}", style = MaterialTheme.typography.titleLarge)
+        } else Text(data.pay.error ?: "Loading weekly records…")
+        TextButton(enabled = data.pay.loaded, onClick = { showWeek = true }) { Text("VIEW WEEK BREAKDOWN") }
+        WorkCalendarSection(data, calendar, vm, busy, week, showWeek && data.pay.loaded, { showWeek = false }) { recordId = it }
         Text("Personal estimates only. Base pay excludes overtime premiums, taxes, withholding, bonuses, differentials, and payroll rounding. Not an official Publix app or employer timekeeping record.", style = MaterialTheme.typography.bodySmall)
     }
 }

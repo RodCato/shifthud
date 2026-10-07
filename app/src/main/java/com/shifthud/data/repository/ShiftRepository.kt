@@ -19,6 +19,11 @@ class ShiftRepository(
     private val autoLunchSettings: suspend () -> AutoLunchSettings = { AutoLunchSettings() },
 ) {
     private val dao = db.shifts()
+    fun sessionsBetween(start: LocalDate, endExclusive: LocalDate, zone: ZoneId) =
+        dao.observeSessionsBetween(start.atStartOfDay(zone).toInstant().toEpochMilli(), endExclusive.atStartOfDay(zone).toInstant().toEpochMilli()).map { rows -> rows.map { it.model() } }
+    fun scheduleBetween(start: LocalDate, endExclusive: LocalDate) =
+        dao.observeScheduleBetween(start.toEpochDay(), endExclusive.toEpochDay()).map { rows -> rows.map { it.model() } }
+    fun session(id: Long) = dao.observeSession(id).map { it?.model() }
     val schedule = dao.observeSchedule().map { rows -> rows.map { it.model() } }
     val sessions = dao.observeSessions().map { rows -> rows.map { it.model() } }
     val latestSession = dao.observeLatest().map { it?.model() }

@@ -8,13 +8,29 @@ import kotlinx.coroutines.flow.*
 import java.time.*
 import com.shifthud.domain.pay.*
 
-data class PayData(val rates: List<PayRate> = emptyList(), val sessions: List<WorkSession> = emptyList(), val error: String? = null)
+data class PayData(val rates: List<PayRate> = emptyList(), val sessions: List<WorkSession> = emptyList(), val error: String? = null, val loaded: Boolean = false)
 
 data class ShiftUiState(val schedule: List<ScheduledShift> = emptyList(), val session: WorkSession? = null, val threshold: Int = 360, val now: Instant = Instant.now(), val loaded: Boolean = false, val warningOffsets: Set<Int> = com.shifthud.notification.DEFAULT_WARNING_OFFSETS, val pay: PayData = PayData())
+data class CalendarData(val month: YearMonth, val schedule: List<ScheduledShift> = emptyList(), val sessions: List<WorkSession> = emptyList(), val loaded: Boolean = false, val error: String? = null)
+@OptIn(ExperimentalCoroutinesApi::class)
 class ShiftViewModel(private val app: ShiftHudApplication) : ViewModel() {
     val engine = app.engine
-    private val ticks = flow { while (true) { emit(Instant.now()); delay(1000) } }
-    private val payData = combine(app.payRates.rates, app.repository.sessions) { rates, sessions -> PayData(rates, sessions) }
+    private val ticks = flow { while (true) { emit(Instant.now()); delay(1000) } }.shareIn(viewModelScope, SharingStarted.WhileSubscribed(5000), replay = 1)
+    private val calendarMonth = MutableStateFlow(YearMonth.now())
+    private val localDay = ticks.map { it.atZone(ZoneId.systemDefault()).toLocalDate() to ZoneId.systemDefault() }.distinctUntilChanged()
+    private val weeklySessions = localDay.flatMapLatest { (date, zone) ->
+        val week = workWeekFor(date)
+        app.repository.sessionsBetween(week.start, week.endInclusive.plusDays(1), zone)
+    }
+    val calendar = combine(calendarMonth, localDay) { month, day -> month to day.second }.distinctUntilChanged().flatMapLatest { (month, zone) ->
+        val range = com.shifthud.domain.calendar.calendarRange(month)
+        combine(app.repository.scheduleBetween(range.start, range.endExclusive), app.repository.sessionsBetween(range.start, range.endExclusive, zone)) { schedule, sessions ->
+            CalendarData(month, schedule, sessions, true)
+        }.onStart { emit(CalendarData(month)) }.catch { emit(CalendarData(month, error = "Calendar unavailable. Please reopen Dashboard to retry.")) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CalendarData(YearMonth.now()))
+    fun calendarMonth(month: YearMonth) { calendarMonth.value = month }
+    fun record(id: Long) = app.repository.session(id)
+    private val payData = combine(app.payRates.rates, weeklySessions) { rates, sessions -> PayData(rates, sessions, loaded = true) }
         .catch { emit(PayData(error = "Pay estimates unavailable. Could not read pay-rate history or time records.")) }
     private val shiftState = combine(app.repository.schedule, app.repository.latestSession, app.preferences.warningSettings, ticks) { schedule, session, settings, now -> ShiftUiState(schedule, session, settings.threshold, now, true, settings.offsets) }
     val state = combine(shiftState, payData) { shift, pay -> shift.copy(pay = pay) }
