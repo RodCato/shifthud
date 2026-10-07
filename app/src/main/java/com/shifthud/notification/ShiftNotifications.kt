@@ -105,6 +105,15 @@ class ShiftNotifications(private val context: Context) {
         accepted
     }
 
+    suspend fun forgetSession(sessionId: Long) = mutex.withLock {
+        val app = context.applicationContext as ShiftHudApplication
+        app.preferences.forgetSession(sessionId)
+        // Match the complete ID component, never a bare numeric prefix (1 must not match 10).
+        manager.activeNotifications.filter {
+            it.id == WARNING_ID && it.notification.extras.getString(WARNING_RECEIPT)?.startsWith("$sessionId:") == true
+        }.forEach { manager.cancel(it.tag, it.id) }
+    }
+
     fun reminderStatus(): ReminderChannelStatus {
         val channel = manager.getNotificationChannel(WARNING_CHANNEL)
         return ReminderChannelStatus(permissionAllowed() && manager.areNotificationsEnabled(),

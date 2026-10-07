@@ -55,6 +55,14 @@ class ShiftPreferences(context: Context, private val onChanged: suspend () -> Un
         store.edit { it[snoozeDuration] = minutes }
         withContext(NonCancellable) { onChanged() }
     }
+    suspend fun forgetSession(sessionId: Long) {
+        store.edit { p ->
+            listOf(warningHistory, attentionHistory).forEach { key ->
+                val owner = p[key]?.let { runCatching { JSONObject(it).getLong("session") }.getOrNull() }
+                if (owner == sessionId) p.remove(key)
+            }
+        }
+    }
     private fun attention(p: Preferences): LunchAttention? = p[attentionHistory]?.let { encoded ->
         runCatching {
             val j = JSONObject(encoded)

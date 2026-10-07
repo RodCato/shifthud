@@ -14,7 +14,7 @@ class ShiftHudApplication : Application() {
     val engine by lazy { ShiftEngine() }
     private val database by lazy { Room.databaseBuilder(this, ShiftDatabase::class.java, "shifthud.db").addMigrations(com.shifthud.data.local.MIGRATION_1_2, com.shifthud.data.local.MIGRATION_2_3, com.shifthud.data.local.MIGRATION_3_4, com.shifthud.data.local.MIGRATION_4_5).build() }
     val widgetRefresh by lazy { WidgetRefresh(this) }
-    val repository by lazy { ShiftRepository(database, engine, onChanged = { widgetRefresh.refresh() }, onHistoricalChanged = { widgetRefresh.redrawHistorical() }, autoLunchSettings = { preferences.autoLunchSettings.first() }) }
+    val repository by lazy { ShiftRepository(database, engine, onChanged = { widgetRefresh.refresh() }, onHistoricalChanged = { widgetRefresh.redrawHistorical() }, autoLunchSettings = { preferences.autoLunchSettings.first() }, onSessionDeleted = { notifications.forgetSession(it) }) }
     val quickFind by lazy { com.shifthud.data.repository.QuickFindRepository(database, onChanged = { widgetRefresh.refresh() }) }
     val preferences by lazy { ShiftPreferences(this, onChanged = { widgetRefresh.refresh() }) }
 }

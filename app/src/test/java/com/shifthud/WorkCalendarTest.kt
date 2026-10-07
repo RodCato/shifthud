@@ -54,6 +54,6 @@ class WorkCalendarTest {
         assertEquals(breakdown.grossCents,breakdown.contributions.sumOf{it.grossCents!!})
     }
     @Test fun unexpectedDuplicatesAndZeroDurationRemainVisible(){val s=session();val b=estimator.weekBreakdown(listOf(s,s.copy(id=2),s.copy(id=3,clockOut=s.clockIn)),DEFAULT_PAY_RATES,now,zone);assertEquals(3,b.contributions.size);assertEquals(Duration.ofHours(18),b.paid)}
-    @Test fun perSessionRoundingReconcilesWithTotal(){val s=session().copy(clockOut=stamp(3,4).plusMillis(1125));val b=estimator.weekBreakdown(listOf(s,s.copy(id=2)),DEFAULT_PAY_RATES,now,zone);assertEquals(listOf(1L,1L),b.contributions.map{it.grossCents});assertEquals(2L,b.grossCents);assertEquals("0h 0m 2.25s",recordDuration(b.paid))}
-    @Test fun durationPresentationDoesNotHideSubMinuteSessions(){assertEquals("0h 0m 1.001s",recordDuration(Duration.ofMillis(1001)));assertEquals("8h 6m",recordDuration(Duration.ofMinutes(486)))}
+    @Test fun perSessionRoundingReconcilesWithTotal(){val s=session().copy(clockOut=stamp(3,4).plusMillis(1125));val b=estimator.weekBreakdown(listOf(s,s.copy(id=2)),DEFAULT_PAY_RATES,now,zone);assertEquals(listOf(1L,1L),b.contributions.map{it.grossCents});assertEquals(2L,b.grossCents);assertEquals("0m",recordDuration(b.paid))}
+    @Test fun durationPresentationUsesWholeMinutes(){assertEquals("0m",recordDuration(Duration.ofMillis(1001)));assertEquals("8h 6m",recordDuration(Duration.ofMinutes(486)))}
 }

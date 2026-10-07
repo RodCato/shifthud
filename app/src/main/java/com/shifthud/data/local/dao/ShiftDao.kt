@@ -23,7 +23,7 @@ interface ShiftDao {
     @Query("SELECT * FROM work_sessions WHERE id = :id") suspend fun session(id: Long): WorkSessionEntity?
     @Query("SELECT * FROM work_sessions WHERE id != :excluding AND clockIn < :end AND (clockOut IS NULL OR clockOut > :start) ORDER BY clockIn LIMIT 1")
     suspend fun overlapping(start: Long, end: Long, excluding: Long = 0): WorkSessionEntity?
-    @Query("DELETE FROM work_sessions WHERE id = :id AND manuallyEntered = 1 AND state = 'COMPLETE'")
+    @Query("DELETE FROM work_sessions WHERE id = :id AND state = 'COMPLETE'")
     suspend fun deleteHistorical(id: Long): Int
     @Update suspend fun update(session: WorkSessionEntity)
 }

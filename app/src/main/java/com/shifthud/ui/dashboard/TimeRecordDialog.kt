@@ -38,14 +38,12 @@ import java.time.format.FormatStyle
                 else PickerField(event.label, value.atZone(zone).let { "${it.format(dateFormat)} · ${it.format(timeFormat)}" } +
                     if (event == TimeEvent.LUNCH_END && session.lunchEndAutomatic) " · Auto" else "", !busy) { editing = session to event }
             }
-            if (session.manuallyEntered) TextButton(enabled = !busy, onClick = { confirmDelete = true }) { Text("DELETE PREVIOUS SHIFT") }
+            if (session.state == com.shifthud.domain.model.ShiftState.COMPLETE) TextButton(enabled = !busy, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error), onClick = { confirmDelete = true }) { Text("DELETE SHIFT RECORD") }
         }
     }, confirmButton = { TextButton(onClick = dismiss) { Text("Close") } })
-    if (confirmDelete) AlertDialog(onDismissRequest = { if (!busy) confirmDelete = false },
-        title = { Text("Delete this work session?") },
-        text = { Text("This removes its hours and estimated gross from ShiftHUD. This does not affect employer records.") },
-        confirmButton = { TextButton(enabled = !busy, onClick = { vm.deleteHistorical(session, dismiss) }) { Text("Delete") } },
-        dismissButton = { TextButton(enabled = !busy, onClick = { confirmDelete = false }) { Text("Cancel") } })
+    if (confirmDelete) DeleteShiftRecordDialog(session, vm, busy, now, { confirmDelete = false }) {
+        vm.deleteHistorical(session, dismiss)
+    }
     editing?.let { (originalSession, event) ->
         val original = requireNotNull(event.timestamp(originalSession))
         var date by remember(originalSession, event) { mutableStateOf(original.atZone(zone).toLocalDate()) }

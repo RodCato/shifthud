@@ -32,7 +32,7 @@ import java.util.Locale
     val days = workCalendar(calendar.month, calendar.schedule, calendar.sessions, data.pay.rates, data.now, zone, estimator)
     val dateFormat = DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale)
     fun stamp(value: Instant): String = value.atZone(zone).format(DateTimeFormatter.ofPattern(
-        "MMM d, " + if (use24) "HH:mm:ss" else "h:mm:ss a", locale))
+        "MMM d, " + if (use24) "HH:mm" else "h:mm a", locale))
     fun gross(value: Long?) = value?.let { money(it, locale) } ?: "Unavailable"
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -98,7 +98,7 @@ import java.util.Locale
                         if (session.manuallyEntered) Text("Manually added", style = MaterialTheme.typography.labelMedium)
                         if (session.lunchEndAutomatic) Text("Lunch end inferred automatically", style = MaterialTheme.typography.labelMedium)
                         TextButton(enabled = !busy, onClick = { openRecord(session.id) }) { Text("EDIT TIME") }
-                        if (session.manuallyEntered && session.state == ShiftState.COMPLETE) TextButton(enabled = !busy, onClick = { deleting = session }) { Text("DELETE SHIFT") }
+                        if (session.state == ShiftState.COMPLETE) TextButton(enabled = !busy, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error), onClick = { deleting = session }) { Text("DELETE SHIFT RECORD") }
                         HorizontalDivider()
                     }
                 }
@@ -129,9 +129,8 @@ import java.util.Locale
         }, confirmButton = { TextButton(onClick = dismissWeek) { Text("Close") } })
     }
     deleting?.let { session ->
-        AlertDialog(onDismissRequest = { if (!busy) deleting = null }, title = { Text("Delete this work session?") },
-            text = { Text("This removes its hours and estimated gross from ShiftHUD. This does not affect employer records.") },
-            confirmButton = { TextButton(enabled = !busy, onClick = { vm.deleteHistorical(session) { deleting = null } }) { Text("Delete") } },
-            dismissButton = { TextButton(enabled = !busy, onClick = { deleting = null }) { Text("Cancel") } })
+        DeleteShiftRecordDialog(session, vm, busy, data.now, { deleting = null }) {
+            vm.deleteHistorical(session) { deleting = null }
+        }
     }
 }

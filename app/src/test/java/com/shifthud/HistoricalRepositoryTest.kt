@@ -125,10 +125,10 @@ class HistoricalRepositoryTest {
         assertEquals(before.id,s.scheduledShiftId);assertEquals(before,repo.schedule.first().single())
     }
     @Test fun unscheduledHistoricalSessionValid()=runBlocking {assertNull(read(repo.addHistorical(input(),zone)).scheduledShiftId)}
-    @Test fun liveRecordedCompleteCannotBeDeleted()=runBlocking {
+    @Test fun liveRecordedCompleteCanBeDeleted()=runBlocking {
         val original=input().session(zone,now).copy(manuallyEntered=false)
         val id=db.shifts().insert(original.entity())
-        assertTrue(runCatching{repo.deleteHistorical(read(id))}.isFailure);assertEquals(1,repo.sessions.first().size)
+        repo.deleteHistorical(read(id));assertTrue(repo.sessions.first().isEmpty())
     }
     @Test fun staleDeletionCannotEraseUpdatedPunches()=runBlocking {
         val s=read(repo.addHistorical(input(),zone))

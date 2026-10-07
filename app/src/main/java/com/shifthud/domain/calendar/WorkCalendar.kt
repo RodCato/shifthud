@@ -45,12 +45,8 @@ fun workCalendar(month: YearMonth, schedule: List<ScheduledShift>, sessions: Lis
     }.toList()
 }
 
-/** Show exact persisted millisecond durations when needed to reconcile short/test sessions. */
+/** Presentation only: floor to whole minutes; timestamps and pay retain full precision. */
 fun recordDuration(duration: Duration): String {
-    val millis = duration.toMillis().coerceAtLeast(0)
-    val hours = millis / 3_600_000
-    val minutes = millis / 60_000 % 60
-    val remaining = millis % 60_000
-    val seconds = if (remaining % 1000 == 0L) "${remaining / 1000}" else "${remaining / 1000}.${(remaining % 1000).toString().padStart(3, '0').trimEnd('0')}"
-    return "${hours}h ${minutes}m" + if (remaining != 0L) " ${seconds}s" else ""
+    val minutes = duration.toMinutes().coerceAtLeast(0)
+    return if (minutes < 60) "${minutes}m" else "${minutes / 60}h ${minutes % 60}m"
 }

@@ -17,6 +17,7 @@ class ShiftRepository(
     private val onChanged: suspend () -> Unit = {},
     private val onHistoricalChanged: suspend () -> Unit = {},
     private val autoLunchSettings: suspend () -> AutoLunchSettings = { AutoLunchSettings() },
+    private val onSessionDeleted: suspend (Long) -> Unit = {},
 ) {
     private val dao = db.shifts()
     fun sessionsBetween(start: LocalDate, endExclusive: LocalDate, zone: ZoneId) =
@@ -85,12 +86,17 @@ class ShiftRepository(
         }
     }
 
-    suspend fun deleteHistorical(expected: WorkSession) = changed(historical = true) {
+    suspend fun deleteHistorical(expected: WorkSession) {
         db.withTransaction {
             val current = checkNotNull(dao.session(expected.id)) { "Session no longer exists." }.model()
             check(current == expected) { "Time record changed. Reopen it and try again." }
-            check(current.manuallyEntered && current.state == ShiftState.COMPLETE) { "Only manually added completed shifts can be deleted." }
+            check(current.state == ShiftState.COMPLETE) { "Only completed shift records can be deleted. End the active shift first." }
             check(dao.deleteHistorical(current.id) == 1)
+        }
+        // Room commits before taking the notification/DataStore locks (same order as refresh).
+        // Navigation cannot cancel cleanup; redraw still happens if cleanup reports an error.
+        withContext(NonCancellable) {
+            try { onSessionDeleted(expected.id) } finally { onHistoricalChanged() }
         }
     }
 
