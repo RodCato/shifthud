@@ -91,7 +91,7 @@ import java.time.*
             recordId = it; showPrevious = false
         })
         HorizontalDivider()
-        Text("THIS WEEK · Monday–Sunday", style = MaterialTheme.typography.titleMedium)
+        Text(WORK_WEEK_LABEL, style = MaterialTheme.typography.titleMedium)
         if (data.pay.rates.isNotEmpty()) {
             val week = estimator.week(data.pay.sessions, data.pay.rates, data.now, zone)
             Text("Paid: ${week.paid.display()}")

@@ -140,6 +140,18 @@ class HistoricalRepositoryTest {
         assertTrue(runCatching{repo.correct(s,TimeEvent.CLOCK_OUT,Instant.parse("2026-10-05T15:00:00Z"))}.exceptionOrNull() is SessionOverlapException)
         assertEquals(s,read(s.id))
     }
+    @Test fun persistedSaturdayRecordCountsWithoutReinsertionOrTimestampChanges()=runBlocking {
+        // Existing schema-5 row, as saved by the previous build; no historical-insert hook needed.
+        val zone=ZoneId.of("America/Chicago")
+        val original=HistoricalShiftInput(LocalDate.of(2026,10,3),LocalTime.of(4,0),LocalTime.of(13,0),LocalTime.of(9,47),LocalTime.of(10,41)).session(zone,now)
+        val id=db.shifts().insert(original.entity())
+        val before=repo.sessions.first()
+        assertEquals(PayEstimate(Duration.ofMinutes(486),12960),pay.week(before,DEFAULT_PAY_RATES,now,zone))
+        assertEquals(before,repo.sessions.first());assertEquals(original.copy(id=id),read(id))
+        assertTrue(runCatching{repo.addHistorical(HistoricalShiftInput(LocalDate.of(2026,10,3),LocalTime.of(4,0),LocalTime.of(13,0),LocalTime.of(9,47),LocalTime.of(10,41)),zone)}.exceptionOrNull() is SessionOverlapException)
+        assertEquals(1,repo.sessions.first().size);assertEquals(0,historicalRefreshes)
+        assertEquals(5,db.openHelper.readableDatabase.version)
+    }
     @Test fun rejectedChronologyDoesNotPersistOrRefresh()=runBlocking {
         assertTrue(runCatching{repo.addHistorical(input(end="04:00"),zone)}.isFailure)
         assertTrue(repo.sessions.first().isEmpty());assertEquals(0,historicalRefreshes)

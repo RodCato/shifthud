@@ -6,7 +6,6 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.NumberFormat
 import java.time.*
-import java.time.temporal.TemporalAdjusters
 import java.util.Currency
 import java.util.Locale
 
@@ -41,27 +40,22 @@ fun money(cents: Long, locale: Locale): String = NumberFormat.getCurrencyInstanc
 }.format(BigDecimal.valueOf(cents, 2))
 
 data class PayEstimate(val paid: Duration, val grossCents: Long)
-data class WeekWindow(val start: Instant, val endExclusive: Instant)
-fun currentWeek(now: Instant, zone: ZoneId): WeekWindow {
-    val monday = now.atZone(zone).toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-    return WeekWindow(monday.atStartOfDay(zone).toInstant(), monday.plusWeeks(1).atStartOfDay(zone).toInstant())
-}
-
 class PayEstimator(private val engine: ShiftEngine) {
     fun session(session: WorkSession, rates: List<PayRate>, now: Instant, zone: ZoneId): PayEstimate {
         val paid = engine.durations(session, 360, now).paid
         return PayEstimate(paid, grossCents(paid, applicableRate(rates, session.clockIn, zone).centsPerHour))
     }
 
-    // Clip actual paid intervals to this week and now. Calendar weeks can be 167/169 hours at DST.
+    // Assign whole sessions by local clock-in date; cap elapsed work at now, not at week end.
     // Round each session's contribution once, then sum cents so displayed shift totals reconcile.
     fun week(sessions: List<WorkSession>, rates: List<PayRate>, now: Instant, zone: ZoneId): PayEstimate {
-        val window = currentWeek(now, zone)
+        val week = workWeekFor(now.atZone(zone).toLocalDate())
         var paid = Duration.ZERO
         var cents = 0L
         sessions.forEach { session ->
-            val end = minOf(session.clockOut ?: now, now, window.endExclusive)
-            val start = maxOf(session.clockIn, window.start)
+            if (session.clockIn.atZone(zone).toLocalDate() !in week) return@forEach
+            val end = minOf(session.clockOut ?: now, now)
+            val start = session.clockIn
             if (end > start) {
                 val lunchStart = maxOf(session.lunchStart ?: end, start)
                 val lunchEnd = minOf(session.lunchEnd ?: end, end)

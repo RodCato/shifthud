@@ -63,22 +63,24 @@ class PayEstimateTest {
         assertEquals(PayEstimate(Duration.ZERO,0),estimator.week(emptyList(),rates,at(600),zone))
     }
     @Test fun sessionsOutsideWeekAndFutureActualTimestampsExcluded() {
-        val previous=WorkSession(clockIn=start.minusSeconds(86400),clockOut=start.minusSeconds(82800),state=ShiftState.COMPLETE)
+        val previous=WorkSession(clockIn=start.minusSeconds(259200),clockOut=start.minusSeconds(255600),state=ShiftState.COMPLETE)
         val future=WorkSession(clockIn=at(900))
         assertEquals(PayEstimate(Duration.ZERO,0),estimator.week(listOf(previous,future),rates,at(600),zone))
     }
-    @Test fun mondayAndSundayBelongToSameWeekNextMondayStartsNewWeek() {
-        val monday=Instant.parse("2026-10-05T00:00:00Z")
-        val sunday=Instant.parse("2026-10-11T23:59:59Z")
-        assertEquals(currentWeek(monday,zone),currentWeek(sunday,zone))
-        assertEquals(Instant.parse("2026-10-12T00:00:00Z"),currentWeek(sunday,zone).endExclusive)
-        assertEquals(currentWeek(sunday,zone).endExclusive,currentWeek(sunday.plusSeconds(1),zone).start)
+    @Test fun saturdayAndFridayBelongToSameWeekNextSaturdayStartsNewWeek() {
+        val saturday=Instant.parse("2026-10-03T00:00:00Z")
+        val friday=Instant.parse("2026-10-09T23:59:59Z")
+        assertEquals(currentWeek(saturday,zone),currentWeek(friday,zone))
+        assertEquals(Instant.parse("2026-10-10T00:00:00Z"),currentWeek(friday,zone).endExclusive)
+        assertEquals(currentWeek(friday,zone).endExclusive,currentWeek(friday.plusSeconds(1),zone).start)
     }
-    @Test fun overnightWeekBoundaryClipsBothWorkAndLunch() {
-        val monday=Instant.parse("2026-10-05T00:00:00Z")
-        val overnight=WorkSession(clockIn=monday.minusSeconds(3600),lunchStart=monday.minusSeconds(900),lunchEnd=monday.plusSeconds(900),clockOut=monday.plusSeconds(3600),state=ShiftState.COMPLETE)
-        val week=estimator.week(listOf(overnight),rates,at(600),zone)
-        assertEquals(Duration.ofMinutes(45),week.paid);assertEquals(1200L,week.grossCents)
+    @Test fun overnightWeekBoundaryKeepsWholeSessionInClockInWeek() {
+        val saturday=Instant.parse("2026-10-03T00:00:00Z")
+        val overnight=WorkSession(clockIn=saturday.minusSeconds(3600),lunchStart=saturday.minusSeconds(900),lunchEnd=saturday.plusSeconds(900),clockOut=saturday.plusSeconds(3600),state=ShiftState.COMPLETE)
+        assertEquals(PayEstimate(Duration.ZERO,0),estimator.week(listOf(overnight),rates,at(600),zone))
+        // Before rollover, only elapsed paid time counts; the open lunch is clipped to now.
+        val before=estimator.week(listOf(overnight),rates,saturday.minusSeconds(1),zone)
+        assertEquals(Duration.ofMinutes(45),before.paid);assertEquals(1200L,before.grossCents)
     }
     @Test fun weekDuringLunchFreezesAndResumesAfterwards() {
         val lunch=WorkSession(clockIn=start,lunchStart=at(60),state=ShiftState.ON_LUNCH)

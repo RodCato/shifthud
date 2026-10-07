@@ -57,9 +57,9 @@ class HistoricalShiftTest {
         val s=input("00:00","04:00").copy(date=LocalDate.of(2026,3,8)).session(ZoneId.of("America/Chicago"),now)
         assertEquals(Duration.ofHours(3),engine.durations(s,360).paid)
     }
-    @Test fun priorSaturdayDoesNotContributeToTuesdayMondayBasedWeek() {
+    @Test fun priorSaturdayContributesToTuesdayWorkWeek() {
         val total=PayEstimator(engine).week(listOf(input().session(zone,now)),DEFAULT_PAY_RATES,now,zone)
-        assertEquals(Duration.ZERO,total.paid);assertEquals(0L,total.grossCents)
+        assertEquals(Duration.ofHours(9),total.paid);assertEquals(14400L,total.grossCents)
     }
     @Test fun scheduleAssociationRequiresOneClearCandidate() {
         val s=input().session(zone,now)
