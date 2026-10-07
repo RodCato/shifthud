@@ -3,7 +3,7 @@ import androidx.room.*
 import com.shifthud.data.local.dao.ShiftDao
 import com.shifthud.data.local.entity.*
 
-@Database(entities = [ScheduledShiftEntity::class, WorkSessionEntity::class, QuickFindItemEntity::class, AisleGuideEntity::class], version = 4, exportSchema = true)
+@Database(entities = [ScheduledShiftEntity::class, WorkSessionEntity::class, QuickFindItemEntity::class, AisleGuideEntity::class], version = 5, exportSchema = true)
 abstract class ShiftDatabase : RoomDatabase() { abstract fun shifts(): ShiftDao
     abstract fun aisleGuide(): com.shifthud.data.local.dao.AisleGuideDao
     abstract fun quickFind(): com.shifthud.data.local.dao.QuickFindDao
@@ -28,5 +28,11 @@ val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS aisle_guide (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, aisle TEXT NOT NULL, normalizedAisle TEXT NOT NULL, categories TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL)")
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_aisle_guide_normalizedAisle ON aisle_guide (normalizedAisle)")
+    }
+}
+
+val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE work_sessions ADD COLUMN manuallyEntered INTEGER NOT NULL DEFAULT 0")
     }
 }

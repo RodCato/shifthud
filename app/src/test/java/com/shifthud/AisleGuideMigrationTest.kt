@@ -54,7 +54,7 @@ class AisleGuideMigrationTest {
             }
             var quickId=0L
             repeat(2) {pass ->
-                val db=Room.databaseBuilder(context,ShiftDatabase::class.java,name).addMigrations(MIGRATION_1_2,MIGRATION_2_3, MIGRATION_3_4).build()
+                val db=Room.databaseBuilder(context,ShiftDatabase::class.java,name).addMigrations(MIGRATION_1_2,MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
                 try {
                     val schedule=db.shifts().scheduleSnapshot().single()
                     assertEquals(7L,schedule.id);assertEquals(20731L,schedule.date);assertEquals(14400,schedule.scheduledStart)
@@ -74,7 +74,7 @@ class AisleGuideMigrationTest {
                     assertEquals(Instant.ofEpochMilli(1000),item.createdAt);assertEquals(Instant.ofEpochMilli(2000),item.updatedAt);assertEquals(Instant.ofEpochMilli(3000),item.lastUsedAt)
                     if(pass==0) {assertTrue(quick.guide.first().isEmpty());quickId=quick.saveGuide(null,"5","Pasta, Rice")}
                     else {val guide=quick.guide.first().single();assertEquals(quickId,guide.id);assertEquals("5",guide.aisle);assertEquals("Pasta, Rice",guide.categories)}
-                    assertEquals(4,db.openHelper.readableDatabase.version)
+                    assertEquals(5,db.openHelper.readableDatabase.version)
                 } finally {db.close()}
             }
             scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)

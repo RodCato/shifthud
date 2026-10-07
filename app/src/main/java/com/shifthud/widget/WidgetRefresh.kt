@@ -25,6 +25,15 @@ class WidgetRefresh(private val context: Context) {
     val now = _now.asStateFlow()
     fun markNow() { _now.value = Instant.now() }
 
+    /** Historical writes only redraw; they must not reconcile lunch or touch alerts/services. */
+    suspend fun redrawHistorical() = mutex.withLock {
+        try {
+            markNow()
+            ShiftHudWidget().updateAll(context)
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { Log.w("ShiftHUDWidget", "Historical redraw deferred", e) }
+    }
+
     suspend fun refresh(mayStartService: Boolean = true, synchronizeService: Boolean = true): Boolean = mutex.withLock {
         try {
             val app = context.applicationContext as ShiftHudApplication

@@ -34,6 +34,12 @@ class ShiftViewModel(private val app: ShiftHudApplication) : ViewModel() {
         }
     }
     fun saveRate(rate: PayRate, done: () -> Unit) = perform { app.payRates.save(rate); done() }
+    fun addHistorical(input: com.shifthud.domain.usecase.HistoricalShiftInput, zone: ZoneId, result: (Long?, Exception?) -> Unit) = perform {
+        try { result(app.repository.addHistorical(input, zone), null) }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) { result(null, e) }
+    }
+    fun deleteHistorical(session: WorkSession, done: () -> Unit) = perform { app.repository.deleteHistorical(session); done() }
     fun clockIn() = perform { app.repository.clockIn() }
     fun startLunch(s: WorkSession) = perform { app.repository.transition(s.id, s.state, engine::startLunch) }
     fun endLunch(s: WorkSession) = perform { app.repository.transition(s.id, s.state, engine::endLunch) }

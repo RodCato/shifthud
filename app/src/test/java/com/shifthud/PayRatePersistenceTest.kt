@@ -48,7 +48,7 @@ class PayRatePersistenceTest {
             assertEquals(1600L,applicableRate(history,session.clockIn,ZoneOffset.UTC).centsPerHour)
             assertEquals(before,db.shifts().session(7))
             assertEquals(listOf(before),db.shifts().observeSessions().first())
-            assertEquals(4,db.openHelper.readableDatabase.version)
+            assertEquals(5,db.openHelper.readableDatabase.version)
         } finally { scope.coroutineContext.job.cancelAndJoin();db.close();file.delete() }
         Unit
     }

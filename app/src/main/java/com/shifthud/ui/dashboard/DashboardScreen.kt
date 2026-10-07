@@ -15,7 +15,9 @@ import com.shifthud.ui.*
 import java.time.*
 
 @Composable fun DashboardScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean) {
-    var showRecord by remember { mutableStateOf(false) }
+    var showRecords by remember { mutableStateOf(false) }
+    var showPrevious by remember { mutableStateOf(false) }
+    var recordId by remember { mutableStateOf<Long?>(null) }
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
     val estimator = remember(vm.engine) { PayEstimator(vm.engine) }
@@ -67,10 +69,27 @@ import java.time.*
             }
             if (session.state != ShiftState.COMPLETE) Text(linked?.let { "Scheduled out: ${it.scheduledEnd.format(timeFormat)}${if (it.end.toLocalDate() != it.date) " (+1 day)" else ""}" } ?: "Unscheduled shift")
         }
-        data.session?.let { record ->
-            OutlinedButton(onClick = { showRecord = true }, enabled = !busy) { Text("TIME RECORD / EDIT TIME") }
-            if (showRecord) TimeRecordDialog(record, vm, busy, data.now) { showRecord = false }
+        if (data.session != null || data.pay.sessions.any { it.manuallyEntered }) {
+            OutlinedButton(onClick = { showRecords = true }, enabled = !busy) { Text("TIME RECORD / EDIT TIME") }
         }
+        OutlinedButton(onClick = { showPrevious = true }, enabled = !busy) { Text("ADD PREVIOUS SHIFT") }
+        if (showRecords) AlertDialog(onDismissRequest = { showRecords = false }, title = { Text("Time records") }, text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                (data.pay.sessions.filter { it.manuallyEntered } + listOfNotNull(data.session)).distinctBy { it.id }
+                    .sortedByDescending { it.clockIn }.forEach { record ->
+                        val start = record.clockIn.atZone(zone)
+                        TextButton(onClick = { recordId = record.id; showRecords = false }) {
+                            Text("${start.toLocalDate().format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM).withLocale(locale))} · ${start.toLocalTime().format(timeFormat)}" + if (record.manuallyEntered) " · Manually added" else "")
+                        }
+                    }
+            }
+        }, confirmButton = { TextButton(onClick = { showRecords = false }) { Text("Close") } })
+        (data.pay.sessions.firstOrNull { it.id == recordId } ?: data.session?.takeIf { it.id == recordId })?.let { record ->
+            TimeRecordDialog(record, vm, busy, data.now) { recordId = null }
+        }
+        if (showPrevious) PreviousShiftDialog(data, vm, busy, dismiss = { showPrevious = false }, openRecord = {
+            recordId = it; showPrevious = false
+        })
         HorizontalDivider()
         Text("THIS WEEK · Monday–Sunday", style = MaterialTheme.typography.titleMedium)
         if (data.pay.rates.isNotEmpty()) {

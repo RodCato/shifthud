@@ -15,6 +15,7 @@ class ShiftRepository(
     private val engine: ShiftEngine,
     private val clock: Clock = Clock.systemDefaultZone(),
     private val onChanged: suspend () -> Unit = {},
+    private val onHistoricalChanged: suspend () -> Unit = {},
     private val autoLunchSettings: suspend () -> AutoLunchSettings = { AutoLunchSettings() },
 ) {
     private val dao = db.shifts()
@@ -57,12 +58,40 @@ class ShiftRepository(
         }
     }
 
-    suspend fun correct(expected: WorkSession, event: TimeEvent, value: Instant) = changed {
+    suspend fun correct(expected: WorkSession, event: TimeEvent, value: Instant) = changed(historical = expected.manuallyEntered) {
         db.withTransaction {
             val current = checkNotNull(dao.session(expected.id)) { "Session no longer exists." }.model()
             check(current == expected) { "Time record changed. Reopen the event and try again." }
-            dao.update(correctTime(current, event, value, clock.instant()).entity())
+            val corrected = correctTime(current, event, value, clock.instant())
+            if (corrected.manuallyEntered) {
+                require(corrected.clockOut!! > corrected.clockIn) { "Clock out must be after clock in." }
+                checkOverlap(corrected, current.id)
+            }
+            dao.update(corrected.entity())
         }
+    }
+
+    suspend fun addHistorical(input: HistoricalShiftInput, zone: ZoneId): Long = changed(historical = true) {
+        db.withTransaction {
+            val session = input.session(zone, clock.instant())
+            checkOverlap(session)
+            val linked = historicalSchedule(session, dao.scheduleSnapshot().map { it.model() }, zone)
+            dao.insert(session.copy(scheduledShiftId = linked).entity())
+        }
+    }
+
+    suspend fun deleteHistorical(expected: WorkSession) = changed(historical = true) {
+        db.withTransaction {
+            val current = checkNotNull(dao.session(expected.id)) { "Session no longer exists." }.model()
+            check(current == expected) { "Time record changed. Reopen it and try again." }
+            check(current.manuallyEntered && current.state == ShiftState.COMPLETE) { "Only manually added completed shifts can be deleted." }
+            check(dao.deleteHistorical(current.id) == 1)
+        }
+    }
+
+    private suspend fun checkOverlap(session: WorkSession, excluding: Long = 0) {
+        dao.overlapping(session.clockIn.toEpochMilli(), requireNotNull(session.clockOut).toEpochMilli(), excluding)
+            ?.let { throw SessionOverlapException(it.model()) }
     }
 
     /** Shared refresh owns the redraw; do not recursively invoke onChanged from its reconciliation. */
@@ -74,10 +103,10 @@ class ShiftRepository(
         true
     }
 
-    private suspend fun <T> changed(block: suspend () -> T): T {
+    private suspend fun <T> changed(historical: Boolean = false, block: suspend () -> T): T {
         val result = block()
         // Persistence is complete before requesting a redraw; navigation cannot cancel this handoff.
-        withContext(NonCancellable) { onChanged() }
+        withContext(NonCancellable) { if (historical) onHistoricalChanged() else onChanged() }
         return result
     }
 }

@@ -25,10 +25,12 @@ import java.time.format.FormatStyle
     val timeFormat = DateTimeFormatter.ofPattern(if (android.text.format.DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm a", locale)
     val dateFormat = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
     var editing by remember { mutableStateOf<Pair<WorkSession, TimeEvent>?>(null) }
+    var confirmDelete by remember { mutableStateOf(false) }
     val durations = vm.engine.durations(session, 360, now)
     AlertDialog(onDismissRequest = dismiss, title = { Text("Time record") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Personal record only. Auto means an inferred lunch end; corrections do not change employer payroll.")
+            if (session.manuallyEntered) Text("Manually added previous shift")
             Text("Paid ${durations.paid.display()} · Store ${durations.store.display()} · Lunch ${durations.lunch.display()}")
             TimeEvent.entries.forEach { event ->
                 val value = event.timestamp(session)
@@ -36,8 +38,14 @@ import java.time.format.FormatStyle
                 else PickerField(event.label, value.atZone(zone).let { "${it.format(dateFormat)} · ${it.format(timeFormat)}" } +
                     if (event == TimeEvent.LUNCH_END && session.lunchEndAutomatic) " · Auto" else "", !busy) { editing = session to event }
             }
+            if (session.manuallyEntered) TextButton(enabled = !busy, onClick = { confirmDelete = true }) { Text("DELETE PREVIOUS SHIFT") }
         }
     }, confirmButton = { TextButton(onClick = dismiss) { Text("Close") } })
+    if (confirmDelete) AlertDialog(onDismissRequest = { if (!busy) confirmDelete = false },
+        title = { Text("Delete this work session?") },
+        text = { Text("This removes its hours and estimated gross from ShiftHUD. This does not affect employer records.") },
+        confirmButton = { TextButton(enabled = !busy, onClick = { vm.deleteHistorical(session, dismiss) }) { Text("Delete") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = { confirmDelete = false }) { Text("Cancel") } })
     editing?.let { (originalSession, event) ->
         val original = requireNotNull(event.timestamp(originalSession))
         var date by remember(originalSession, event) { mutableStateOf(original.atZone(zone).toLocalDate()) }
