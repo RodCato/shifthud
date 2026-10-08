@@ -57,12 +57,60 @@ class ShiftPreferences(context: Context, private val onChanged: suspend () -> Un
     }
     suspend fun forgetSession(sessionId: Long) {
         store.edit { p ->
-            listOf(warningHistory, attentionHistory).forEach { key ->
+            listOf(warningHistory, attentionHistory, endHistory).forEach { key ->
                 val owner = p[key]?.let { runCatching { JSONObject(it).getLong("session") }.getOrNull() }
                 if (owner == sessionId) p.remove(key)
             }
         }
     }
+    private val endEnabled = booleanPreferencesKey("shift_end_enabled")
+    private val endLead = intPreferencesKey("shift_end_lead")
+    private val endSnooze = intPreferencesKey("shift_end_snooze")
+    private val endHistory = stringPreferencesKey("shift_end_delivery")
+    private fun endSettings(p: Preferences) = ShiftEndSettings(p[endEnabled] ?: true,
+        p[endLead]?.takeIf { it in SHIFT_END_LEADS || (debugSettings && it == 2) } ?: 15,
+        p[endSnooze]?.takeIf { it in SHIFT_END_SNOOZES } ?: 10)
+    val shiftEndSettings = store.data.map(::endSettings)
+    suspend fun setShiftEnd(settings: ShiftEndSettings) {
+        require(settings.leadMinutes in SHIFT_END_LEADS || (debugSettings && settings.leadMinutes == 2))
+        require(settings.snoozeMinutes in SHIFT_END_SNOOZES)
+        store.edit { it[endEnabled] = settings.enabled; it[endLead] = settings.leadMinutes; it[endSnooze] = settings.snoozeMinutes }
+        withContext(NonCancellable) { onChanged() }
+    }
+    private fun endState(p: Preferences): ShiftEndDelivery? = p[endHistory]?.let { encoded -> runCatching {
+        val j = JSONObject(encoded)
+        ShiftEndDelivery(j.getLong("session"), Instant.ofEpochMilli(j.getLong("end")), j.getInt("lead"),
+            Instant.ofEpochMilli(j.getLong("target")), j.getLong("generation"), j.getBoolean("posted"), j.getBoolean("skipped"))
+    }.getOrNull() }
+    private fun saveEnd(p: MutablePreferences, state: ShiftEndDelivery?) {
+        if (state == null) p.remove(endHistory)
+        else p[endHistory] = JSONObject().put("session", state.sessionId).put("end", state.end.toEpochMilli())
+            .put("lead", state.lead).put("target", state.target.toEpochMilli()).put("generation", state.generation)
+            .put("posted", state.posted).put("skipped", state.skipped).toString()
+    }
+    suspend fun deliverShiftEnd(snapshot: com.shifthud.data.repository.ShiftSnapshot, now: Instant, zone: java.time.ZoneId,
+                                post: (ShiftEndDelivery, Int) -> Boolean): ShiftEndDecision {
+        var result = ShiftEndDecision(null)
+        store.edit { p ->
+            val previous = endState(p)
+            val settings = endSettings(p)
+            result = evaluateShiftEnd(snapshot, settings, previous, now, zone)
+            if (result.due && post(result.state!!, settings.snoozeMinutes))
+                result = result.copy(state = result.state!!.copy(posted = true), cancel = false)
+            if (result.state != previous) saveEnd(p, result.state)
+        }
+        return result
+    }
+    suspend fun snoozeShiftEnd(receipt: String, current: suspend () -> com.shifthud.data.repository.ShiftSnapshot,
+                               now: Instant, zone: java.time.ZoneId): Boolean {
+        var accepted = false
+        store.edit { p ->
+            val next = com.shifthud.notification.snoozeShiftEnd(current(), endSettings(p), endState(p), receipt, now, zone)
+            if (next != null) { saveEnd(p, next); accepted = true }
+        }
+        return accepted
+    }
+    suspend fun nextShiftEndTarget(): Instant? = endState(store.data.first())?.takeIf { !it.posted && !it.skipped }?.target
     private fun attention(p: Preferences): LunchAttention? = p[attentionHistory]?.let { encoded ->
         runCatching {
             val j = JSONObject(encoded)

@@ -36,6 +36,7 @@ import com.shifthud.ui.*
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium)
         PayRateSettings(data, vm, busy)
+        ShiftEndSettingsSection(vm, data.loaded && !busy)
         Text("Lunch threshold counts active work time and pauses during lunch. This is your personal reminder preference.")
         OutlinedTextField(input, { input = it; message = null }, label = { Text("Lunch threshold (minutes)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         Button(enabled = data.loaded && !busy, onClick = {

@@ -30,6 +30,11 @@ class ShiftNotifications(private val context: Context) {
             setSound(null, null)
             enableVibration(false)
         })
+        if (manager.getNotificationChannel(END_CHANNEL) == null) manager.createNotificationChannel(NotificationChannel(END_CHANNEL, "Shift end reminders", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Personal scheduled-shift wrap-up reminders"
+            enableVibration(true)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        })
         if (manager.getNotificationChannel(WARNING_CHANNEL) == null) manager.createNotificationChannel(NotificationChannel(WARNING_CHANNEL, "Lunch reminders", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Reminders for your personal lunch threshold"
             enableVibration(true)
@@ -110,7 +115,7 @@ class ShiftNotifications(private val context: Context) {
         app.preferences.forgetSession(sessionId)
         // Match the complete ID component, never a bare numeric prefix (1 must not match 10).
         manager.activeNotifications.filter {
-            it.id == WARNING_ID && it.notification.extras.getString(WARNING_RECEIPT)?.startsWith("$sessionId:") == true
+            it.id in listOf(WARNING_ID, END_ID) && it.notification.extras.getString(WARNING_RECEIPT)?.startsWith("$sessionId:") == true
         }.forEach { manager.cancel(it.tag, it.id) }
     }
 
@@ -124,12 +129,62 @@ class ShiftNotifications(private val context: Context) {
         .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
         .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, WARNING_CHANNEL)
 
+    fun shiftEndStatus(): ReminderChannelStatus {
+        val channel = manager.getNotificationChannel(END_CHANNEL)
+        return ReminderChannelStatus(permissionAllowed() && manager.areNotificationsEnabled(),
+            channel?.importance, channel?.sound != null, channel?.shouldVibrate() == true)
+    }
+    fun shiftEndSettingsIntent(): Intent = reminderSettingsIntent()
+        .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, END_CHANNEL)
+    private fun shiftEndAllowed() = shiftEndStatus().let { it.notificationsAllowed && it.importance != null && it.importance != NotificationManager.IMPORTANCE_NONE }
+
+    fun shiftEndReminder(state: ShiftEndDelivery, snoozeMinutes: Int, now: Instant, onlyAlertOnce: Boolean = false): Notification {
+        val snooze = PendingIntent.getBroadcast(context, 0,
+            Intent(context, NotificationActionReceiver::class.java).setAction(END_SNOOZE_ACTION)
+                .setData("shifthud://shift-end/${state.receipt}/snooze".toUri())
+                .putExtra("sessionId", state.sessionId).putExtra("receipt", state.receipt),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val format = java.time.format.DateTimeFormatter.ofPattern(if (android.text.format.DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm a", context.resources.configuration.locales[0])
+        val content = "Scheduled out · ${state.end.atZone(ZoneId.systemDefault()).format(format)}\n" + when {
+            !now.isBefore(state.end) -> "You're still clocked in to ShiftHUD."
+            state.generation > 0 -> "Snoozed reminder."
+            else -> "Time to wrap up and clean up."
+        }
+        return NotificationCompat.Builder(context, END_CHANNEL).setSmallIcon(R.drawable.ic_stat_shift)
+            .setContentTitle(shiftEndTitle(state, now)).setContentText(content).setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setContentIntent(open()).setAutoCancel(true).setOnlyAlertOnce(onlyAlertOnce)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER).setPriority(NotificationCompat.PRIORITY_HIGH)
+            .addExtras(android.os.Bundle().apply { putString(WARNING_RECEIPT, state.receipt) })
+            .addAction(0, "SNOOZE ${snoozeMinutes}M", snooze).addAction(0, "OPEN", open()).build()
+    }
+    suspend fun snoozeEnd(sessionId: Long, receipt: String): Boolean = mutex.withLock {
+        val app = context.applicationContext as ShiftHudApplication
+        if (!receipt.startsWith("$sessionId:")) return@withLock false
+        val accepted = app.preferences.snoozeShiftEnd(receipt, { app.repository.snapshot() }, Instant.now(), ZoneId.systemDefault())
+        if (accepted) manager.cancel(END_ID)
+        accepted
+    }
+
     suspend fun refresh() = mutex.withLock {
         createChannels()
         val app = context.applicationContext as ShiftHudApplication
         val snapshot = app.repository.snapshot()
         val session = snapshot.session
         val now = Instant.now()
+        val endDecision = app.preferences.deliverShiftEnd(snapshot, now, ZoneId.systemDefault()) { event, minutes ->
+            try {
+                if (!shiftEndAllowed()) false
+                else if (manager.activeNotifications.any { it.id == END_ID && it.notification.extras.getString(WARNING_RECEIPT) == event.receipt }) true
+                else { manager.notify(END_ID, shiftEndReminder(event, minutes, now)); true }
+            } catch (_: Exception) { false }
+        }
+        if (endDecision.cancel) manager.cancel(END_ID)
+        endDecision.state?.takeIf { it.posted }?.let { event ->
+            val existing = manager.activeNotifications.firstOrNull { it.id == END_ID && it.notification.extras.getString(WARNING_RECEIPT) == event.receipt }
+            val minutes = app.preferences.shiftEndSettings.first().snoozeMinutes
+            if (shiftEndAllowed() && existing != null && existing.notification.actions?.firstOrNull()?.title?.toString() != "SNOOZE ${minutes}M")
+                manager.notify(END_ID, shiftEndReminder(event, minutes, now, onlyAlertOnce = true))
+        }
         fun diagnostic(message: String) {
             if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) Log.d(DIAGNOSTIC_TAG, "session=${session?.id} $message")
         }
@@ -203,6 +258,9 @@ class ShiftNotifications(private val context: Context) {
     }
 
     companion object {
+        const val END_CHANNEL = "shift_end_reminders"
+        const val END_ID = 1003
+        const val END_SNOOZE_ACTION = "SNOOZE_SHIFT_END"
         const val SNOOZE_ACTION = "SNOOZE_LUNCH"
         const val DIAGNOSTIC_TAG = "ShiftHUDWarning"
         const val WARNING_RECEIPT = "shifthud.warning.receipt"
