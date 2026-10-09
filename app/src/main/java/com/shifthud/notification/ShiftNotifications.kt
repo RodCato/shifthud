@@ -24,11 +24,17 @@ import java.time.*
 class ShiftNotifications(private val context: Context) {
     private val mutex = Mutex()
     private val manager = context.getSystemService(NotificationManager::class.java)
+    @Volatile var nextWeeklyTarget: Instant? = null
+        private set
     fun createChannels() {
         manager.createNotificationChannel(NotificationChannel(ActiveShiftService.CHANNEL_ID, context.getString(R.string.active_shift_channel), NotificationManager.IMPORTANCE_LOW).apply {
             description = context.getString(R.string.active_shift_channel_description)
             setSound(null, null)
             enableVibration(false)
+        })
+        if (manager.getNotificationChannel(WEEKLY_CHANNEL) == null) manager.createNotificationChannel(NotificationChannel(WEEKLY_CHANNEL, "Weekly hours reminders", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Personal weekly paid-hours target reminders"
+            enableVibration(true)
         })
         if (manager.getNotificationChannel(END_CHANNEL) == null) manager.createNotificationChannel(NotificationChannel(END_CHANNEL, "Shift end reminders", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Personal scheduled-shift wrap-up reminders"
@@ -129,6 +135,21 @@ class ShiftNotifications(private val context: Context) {
         .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
         .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, WARNING_CHANNEL)
 
+    fun weeklyStatus(): ReminderChannelStatus {
+        val channel = manager.getNotificationChannel(WEEKLY_CHANNEL)
+        return ReminderChannelStatus(permissionAllowed() && manager.areNotificationsEnabled(), channel?.importance,
+            channel?.sound != null, channel?.shouldVibrate() == true)
+    }
+    fun weeklySettingsIntent(): Intent = reminderSettingsIntent().putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, WEEKLY_CHANNEL)
+    fun weeklyReminder(decision: WeeklyWarningDecision, progress: com.shifthud.domain.weekly.WeeklyTargetProgress): Notification {
+        val text = weeklyWarningText(decision, progress)
+        return NotificationCompat.Builder(context, WEEKLY_CHANNEL).setSmallIcon(R.drawable.ic_stat_shift)
+            .setContentTitle(text.first).setContentText(text.second).setContentIntent(open()).setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER).setPriority(NotificationCompat.PRIORITY_HIGH)
+            .addExtras(android.os.Bundle().apply { putString(WARNING_RECEIPT, decision.ledger.receipt(requireNotNull(decision.boundary))) })
+            .build()
+    }
+
     fun shiftEndStatus(): ReminderChannelStatus {
         val channel = manager.getNotificationChannel(END_CHANNEL)
         return ReminderChannelStatus(permissionAllowed() && manager.areNotificationsEnabled(),
@@ -171,6 +192,15 @@ class ShiftNotifications(private val context: Context) {
         val snapshot = app.repository.snapshot()
         val session = snapshot.session
         val now = Instant.now()
+        val weekly = app.preferences.deliverWeeklyWarning(app.repository.weeklySessions(now, ZoneId.systemDefault()), snapshot.schedule, now, ZoneId.systemDefault()) { event, progress ->
+            try {
+                if (!weeklyStatus().let { it.notificationsAllowed && it.channelEnabled }) false
+                else if (manager.activeNotifications.any { it.id == WEEKLY_ID && it.notification.extras.getString(WARNING_RECEIPT) == event.ledger.receipt(event.boundary!!) }) true
+                else { manager.notify(WEEKLY_ID, weeklyReminder(event, progress)); true }
+            } catch (_: Exception) { false }
+        }
+        nextWeeklyTarget = weekly.nextTarget
+        if (weekly.cancel) manager.cancel(WEEKLY_ID)
         val endDecision = app.preferences.deliverShiftEnd(snapshot, now, ZoneId.systemDefault()) { event, minutes ->
             try {
                 if (!shiftEndAllowed()) false
@@ -258,6 +288,8 @@ class ShiftNotifications(private val context: Context) {
     }
 
     companion object {
+        const val WEEKLY_CHANNEL = "weekly_hours_reminders"
+        const val WEEKLY_ID = 1004
         const val END_CHANNEL = "shift_end_reminders"
         const val END_ID = 1003
         const val END_SNOOZE_ACTION = "SNOOZE_SHIFT_END"

@@ -62,7 +62,8 @@ class ActiveShiftService : Service() {
                 val durations = app.engine.durations(refreshed, 360, now)
                 val elapsed = if (refreshed.state == ShiftState.ON_LUNCH) durations.lunch else durations.activeWork
                 val baseDelay = autoLunchRefreshDelayMillis(refreshed, now, nextActiveRefreshDelayMillis(elapsed))
-                val delayMillis = shiftEndRefreshDelayMillis(app.preferences.nextShiftEndTarget(), now, baseDelay)
+                val reminderDelay = shiftEndRefreshDelayMillis(app.preferences.nextShiftEndTarget(), now, baseDelay)
+                val delayMillis = shiftEndRefreshDelayMillis(app.notifications.nextWeeklyTarget, now, reminderDelay)
                 withTimeoutOrNull(delayMillis) { wake.receive() }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {

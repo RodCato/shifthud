@@ -32,6 +32,11 @@ class ShiftRepository(
     suspend fun save(shift: ScheduledShift) = changed { dao.save(shift.entity()) }
     suspend fun delete(id: Long) = changed { dao.delete(id) }
 
+    suspend fun weeklySessions(now: Instant, zone: ZoneId): List<WorkSession> {
+        val window = com.shifthud.domain.pay.currentWeek(now, zone)
+        return dao.sessionsBetween(window.start.toEpochMilli(), window.endExclusive.toEpochMilli()).map { it.model() }
+    }
+
     suspend fun snapshot(): ShiftSnapshot = db.withTransaction {
         ShiftSnapshot(dao.scheduleSnapshot().map { it.model() }, (dao.active() ?: dao.latest())?.model())
     }

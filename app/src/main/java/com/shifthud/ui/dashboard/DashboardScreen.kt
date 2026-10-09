@@ -102,6 +102,7 @@ import java.time.*
             Text("Est. gross: ${week.grossCents?.let { money(it, locale) } ?: "Unavailable"}", style = MaterialTheme.typography.titleLarge)
         } else Text(data.pay.error ?: "Loading weekly records…")
         TextButton(enabled = data.pay.loaded, onClick = { showWeek = true }) { Text("VIEW WEEK BREAKDOWN") }
+        WeeklyTargetSection(data)
         WorkCalendarSection(data, calendar, vm, busy, week, showWeek && data.pay.loaded, { showWeek = false }) { recordId = it }
         Text("Personal estimates only. Base pay excludes overtime premiums, taxes, withholding, bonuses, differentials, and payroll rounding. Not an official Publix app or employer timekeeping record.", style = MaterialTheme.typography.bodySmall)
     }

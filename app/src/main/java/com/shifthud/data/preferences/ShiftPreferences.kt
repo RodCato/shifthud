@@ -63,6 +63,53 @@ class ShiftPreferences(context: Context, private val onChanged: suspend () -> Un
             }
         }
     }
+    private val weeklyEnabled = booleanPreferencesKey("weekly_target_enabled")
+    private val weeklyMinutes = intPreferencesKey("weekly_target_minutes")
+    private val weeklyOffsets = stringSetPreferencesKey("weekly_target_warnings")
+    private val weeklyHistory = stringPreferencesKey("weekly_target_delivery")
+    private fun weeklySettings(p: Preferences) = com.shifthud.domain.weekly.WeeklyTargetSettings(p[weeklyEnabled] ?: true,
+        p[weeklyMinutes]?.takeIf { it in 1..10080 } ?: 2400,
+        p[weeklyOffsets]?.mapNotNull { it.toIntOrNull() }?.filter { it in com.shifthud.domain.weekly.WEEKLY_WARNING_MINUTES }?.toSet()
+            ?: com.shifthud.domain.weekly.WEEKLY_WARNING_MINUTES)
+    val weeklyTargetSettings = store.data.map(::weeklySettings)
+    suspend fun setWeeklyTarget(settings: com.shifthud.domain.weekly.WeeklyTargetSettings) {
+        store.edit { p ->
+            p[weeklyEnabled] = settings.enabled; p[weeklyMinutes] = settings.targetMinutes
+            p[weeklyOffsets] = settings.warnings.map { it.toString() }.toSet()
+        }
+        withContext(NonCancellable) { onChanged() }
+    }
+    suspend fun deliverWeeklyWarning(sessions: List<WorkSession>, schedule: List<com.shifthud.domain.model.ScheduledShift>,
+                                    now: Instant, zone: java.time.ZoneId,
+                                    post: (WeeklyWarningDecision, com.shifthud.domain.weekly.WeeklyTargetProgress) -> Boolean): WeeklyWarningDecision {
+        lateinit var decision: WeeklyWarningDecision
+        store.edit { p ->
+            val settings = weeklySettings(p)
+            val week = com.shifthud.domain.pay.workWeekFor(now.atZone(zone).toLocalDate()).start.toString()
+            // Retain receipts for each target tried this week, including switches back to an old target.
+            val history = p[weeklyHistory]?.let { runCatching { JSONObject(it) }.getOrNull() }
+                ?.takeIf { it.optString("week") == week } ?: JSONObject().put("week", week)
+            val targets = history.optJSONObject("targets") ?: JSONObject()
+            val targetKey = settings.targetMinutes.toString()
+            val previous = targets.optJSONObject(targetKey)?.let { j -> runCatching {
+                fun numbers(key: String) = j.getJSONArray(key).let { a -> (0 until a.length()).map { a.getInt(it) }.toSet() }
+                WeeklyWarningLedger(java.time.LocalDate.parse(week),
+                    com.shifthud.domain.weekly.WeeklyTargetSettings(j.getBoolean("enabled"), settings.targetMinutes, numbers("warnings")),
+                    numbers("consumed"), j.getString("corrections"))
+            }.getOrNull() }
+            val progress = com.shifthud.domain.weekly.weeklyTarget(sessions, schedule, settings, p[autoMinutes] ?: 60, now, zone)
+            decision = evaluateWeeklyWarning(progress, settings, previous, now, history.optString("activeTarget") != targetKey)
+            if (decision.boundary != null && post(decision, progress)) decision = decision.acknowledged()
+            val ledger = decision.ledger
+            if (ledger != previous || history.optString("activeTarget") != targetKey) {
+                targets.put(targetKey, JSONObject().put("enabled", ledger.settings.enabled)
+                    .put("warnings", JSONArray(ledger.settings.warnings.sorted())).put("consumed", JSONArray(ledger.consumed.sorted()))
+                    .put("corrections", ledger.correctionKey))
+                p[weeklyHistory] = history.put("targets", targets).put("activeTarget", targetKey).toString()
+            }
+        }
+        return decision
+    }
     private val endEnabled = booleanPreferencesKey("shift_end_enabled")
     private val endLead = intPreferencesKey("shift_end_lead")
     private val endSnooze = intPreferencesKey("shift_end_snooze")
