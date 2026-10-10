@@ -469,3 +469,27 @@ Weekly-target validation: full Gradle build passed, **499 tests per variant / 99
 Pixel 9/API 37 emulator used backed-up synthetic records, not the user's physical database. Five completed sessions totaling **39h13m** displayed **47m remaining / 98%** with no retroactive weekly alert. A separate approaching-target fixture delivered **Weekly target in 10 minutes / 39h50m worked · 10m remaining** while backgrounded on the HIGH weekly channel. Lunch held worked/remaining/projected clock-out values steady across repeated refreshes; the alert did not repeat. Delivery receipts survived APK replacement. A temporary 39.85-hour target (39h51m) produced **Weekly target reached** after lunch resumed, without automatic clock-out; explicit clock-out cleared the weekly notification. Actual upcoming-store schedules, physical-phone audio/Doze, and Garmin mirroring remain unverified because no physical device/watch was connected. The upcoming five-shift 40-hour example is covered by automated tests.
 
 The weekly channel shortcut opened the correct Android settings page with its independent Sound control. After acceptance testing, the original emulator database and preferences were restored and verified byte-for-byte; no physical data was read or changed.
+
+### Notification Test Center / Garmin verification
+
+Settings starts with a permanent **Notification Test Center**, available in release builds without an active shift. Each **TEST** posts a real standard Android notification through NotificationManager on the existing production channel:
+
+| Test | Existing channel ID | Reserved test ID |
+| --- | --- | --- |
+| Lunch reminders | `lunch_reminders` | 2001 |
+| Shift end reminders | `shift_end_reminders` | 2002 |
+| Weekly hours reminders | `weekly_hours_reminders` | 2003 |
+
+Work milestones is explicitly unavailable because it has no implemented channel. No milestone channel, fake session, schedule, or threshold is created. Test notification titles/bodies are short Garmin-oriented messages, carry no reminder receipt or shift actions, and tap back into Settings. Tests have their own IDs, leaving production IDs 1001–1004 alone. Repeating a test cancels/reposts only that test ID with only-alert-once disabled; different channels remain separately observable. A process-local three-second cooldown across test buttons discourages rapid alert floods. Android may further rate-limit or silence alerts.
+
+Before posting, the center checks POST_NOTIFICATIONS, app-wide notification enablement, and the actual existing channel's presence/importance. Settings displays importance, sound configuration, and vibration, refreshes on resume and after attempts, and gives a clear blocked result. Its direct link opens app notification settings for denied permission/app blocking/missing channels, or the specific channel otherwise. The test path never creates, deletes, or updates channels and never sets per-notification sound/vibration, bypasses DND, or uses CATEGORY_ALARM. It reports only that the notification was posted to Android and that watch delivery cannot be confirmed.
+
+The isolated posting component depends only on Android notification APIs: no repository, Room writes, preferences writes, acknowledgement consumption, snooze changes, shift engine, or service startup. Normal ongoing shift tracking continues independently. No Room migration, new foreground service, Garmin SDK, preview notification, toast, or snackbar substitute is introduced.
+
+Physical Instinct 2 verification:
+1. Keep the paired watch connected to Garmin Connect. In Garmin Connect, use its menu → Settings → Notifications to manage forwarded app alerts and allow ShiftHUD. See the [Instinct 2 notification management instructions](https://www8.garmin.com/manuals/webhelp/GUID-31D23DBB-57C2-4DF7-A0C9-8D1A00AB4BE7/EN-GB/GUID-5A95D297-7177-4745-ADAF-AC4855E0B7FA.html).
+2. Open ShiftHUD → Settings → Notification Test Center. Resolve any blocked permission/channel status through its Android settings button; choose the channel sound/vibration you want.
+3. Tap each TEST, leaving at least three seconds between attempts. Verify the exact test title/body first in Android's notification shade, then on the watch. No shift needs to be started.
+4. If Android shows the alert but the watch does not, review Garmin Connect's forwarding selection and the phone/watch notification/DND settings. ShiftHUD cannot confirm or force Garmin delivery. Tap a phone notification to return to Settings and retry as needed.
+
+Test Center validation: full Gradle build passed with **514 tests per variant / 1,028 passing executions**, including 15 new notification tests; lint **0 errors / 12 existing warnings**. Pixel 9/API 37 emulator verified all three real notifications, coexistence, fresh repeat posting, Settings tap navigation, permission-denied handling, Android settings navigation, and status/result recovery on return. All Room rows and preference hashes stayed unchanged; schema remains 5. No physical watch was connected; Garmin delivery and physical sound/vibration remain unverified.

@@ -82,7 +82,7 @@ class MainActivity : ComponentActivity() {
                 val error by vm.error.collectAsStateWithLifecycle()
                 val nav = rememberNavController()
                 LaunchedEffect(widgetDestination) {
-                    widgetDestination?.takeIf { it == "Schedule" || it == "Dashboard" || it == com.shifthud.widget.QUICK_FIND_DESTINATION }?.let { destination ->
+                    widgetDestination?.takeIf { it == "Schedule" || it == "Dashboard" || it == "Settings" || it == com.shifthud.widget.QUICK_FIND_DESTINATION }?.let { destination ->
                         if (destination == com.shifthud.widget.QUICK_FIND_DESTINATION) quickFindFocusRequest++
                         nav.navigate(destination) { popUpTo(nav.graph.startDestinationId); launchSingleTop = true }
                     }

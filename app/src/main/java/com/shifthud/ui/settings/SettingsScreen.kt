@@ -35,6 +35,7 @@ import com.shifthud.ui.*
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium)
+        NotificationTestCenterSection()
         PayRateSettings(data, vm, busy)
         WeeklyTargetSettingsSection(vm, data.loaded && !busy)
         ShiftEndSettingsSection(vm, data.loaded && !busy)

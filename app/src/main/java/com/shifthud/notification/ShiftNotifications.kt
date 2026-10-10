@@ -22,6 +22,7 @@ import java.time.*
 
 /** Called through the existing serialized WidgetRefresh path; owns no loop or work-time data. */
 class ShiftNotifications(private val context: Context) {
+    val testCenter by lazy { NotificationTestCenter(context) }
     private val mutex = Mutex()
     private val manager = context.getSystemService(NotificationManager::class.java)
     @Volatile var nextWeeklyTarget: Instant? = null
