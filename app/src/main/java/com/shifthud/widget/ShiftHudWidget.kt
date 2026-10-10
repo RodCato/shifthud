@@ -46,7 +46,9 @@ class ShiftHudWidget : GlanceAppWidget() {
             val data by updates.collectAsState(initialState)
             val items by app.quickFind.items.collectAsState(initialItems)
             val guide by app.quickFind.guide.collectAsState(initialGuide)
-            WidgetContent(data, context, items, guide)
+            val restoring by app.backups.busy.collectAsState()
+            if(restoring)Text("ShiftHUD · Restoring data",style=TextStyle(color=ColorProvider(Color.White)))
+            else WidgetContent(data, context, items, guide)
         }
     }
     companion object {

@@ -12,7 +12,7 @@ import com.shifthud.notification.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import com.shifthud.backup.guardedLock as withLock
 import java.time.*
 import java.util.concurrent.TimeUnit
 

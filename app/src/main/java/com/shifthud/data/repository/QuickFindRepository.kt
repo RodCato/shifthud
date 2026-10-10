@@ -1,6 +1,6 @@
 package com.shifthud.data.repository
 
-import androidx.room.withTransaction
+import com.shifthud.backup.guardedTransaction as withTransaction
 import com.shifthud.data.local.ShiftDatabase
 import com.shifthud.data.local.entity.entity
 import com.shifthud.domain.model.*
@@ -32,7 +32,7 @@ class QuickFindRepository(private val db: ShiftDatabase, private val clock: Cloc
     }
     suspend fun delete(id: Long) = changed { dao.delete(id) }
     suspend fun favorite(id: Long, favorite: Boolean) = changed { dao.favorite(id, favorite, clock.millis()) }
-    suspend fun select(id: Long) = dao.recordUse(id,clock.millis())
+    suspend fun select(id: Long) = com.shifthud.backup.DataGate.with { dao.recordUse(id,clock.millis()) }
     suspend fun saveGuide(id: Long?, aisle: String, categories: String): Long = changed {
         db.withTransaction {
             val location = cleanQuickFindText(aisle)
@@ -50,7 +50,7 @@ class QuickFindRepository(private val db: ShiftDatabase, private val clock: Cloc
     }
     suspend fun deleteGuide(id: Long) = changed { guideDao.delete(id) }
     private suspend fun <T> changed(write: suspend () -> T): T {
-        val result = write()
+        val result = com.shifthud.backup.DataGate.with { write() }
         // Commit first; widgets reread Room. No widget-owned copy and no callback under a Room lock.
         withContext(NonCancellable) { onChanged() }
         return result
