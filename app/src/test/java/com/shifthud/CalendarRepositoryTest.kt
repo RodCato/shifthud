@@ -90,7 +90,7 @@ class CalendarRepositoryTest {
         val before=repo.sessions.first()
         val days=source().first()
         estimator.weekBreakdown(days.flatMap{it.workSessions},DEFAULT_PAY_RATES,now,zone)
-        assertEquals(before,repo.sessions.first());assertEquals(original,repo.session(id).first());assertEquals(5,db.openHelper.readableDatabase.version)
+        assertEquals(before,repo.sessions.first());assertEquals(original,repo.session(id).first());assertEquals(6,db.openHelper.readableDatabase.version)
     }
     @Test fun directRecordFlowFindsSessionOutsideDisplayedMonth()=runBlocking {
         val id=repo.addHistorical(input().copy(date=LocalDate.of(2026,8,3)),zone)

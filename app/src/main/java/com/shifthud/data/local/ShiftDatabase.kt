@@ -3,8 +3,9 @@ import androidx.room.*
 import com.shifthud.data.local.dao.ShiftDao
 import com.shifthud.data.local.entity.*
 
-@Database(entities = [ScheduledShiftEntity::class, WorkSessionEntity::class, QuickFindItemEntity::class, AisleGuideEntity::class], version = 5, exportSchema = true)
+@Database(entities = [ScheduledShiftEntity::class, WorkSessionEntity::class, QuickFindItemEntity::class, AisleGuideEntity::class, PaycheckEntity::class, PayrollLineEntity::class, PayrollDepositEntity::class], version = 6, exportSchema = true)
 abstract class ShiftDatabase : RoomDatabase() { abstract fun shifts(): ShiftDao
+    abstract fun payroll(): com.shifthud.data.local.dao.PayrollDao
     abstract fun aisleGuide(): com.shifthud.data.local.dao.AisleGuideDao
     abstract fun quickFind(): com.shifthud.data.local.dao.QuickFindDao
 }
@@ -34,5 +35,18 @@ val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
 val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE work_sessions ADD COLUMN manuallyEntered INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+
+/** Additive only: all existing work, schedule, and Quick Find tables remain untouched. */
+val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS paychecks (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, periodStart INTEGER NOT NULL, periodEnd INTEGER NOT NULL, payDate INTEGER, reportedHours TEXT, grossCents INTEGER, netCents INTEGER, deductionsComplete INTEGER NOT NULL, notes TEXT NOT NULL, reference TEXT NOT NULL, revision INTEGER NOT NULL)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_paychecks_periodStart_periodEnd ON paychecks (periodStart, periodEnd)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS payroll_lines (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, paycheckId INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL, cents INTEGER, FOREIGN KEY(paycheckId) REFERENCES paychecks(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_payroll_lines_paycheckId ON payroll_lines (paycheckId)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS payroll_deposits (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, paycheckId INTEGER NOT NULL, date INTEGER, cents INTEGER, FOREIGN KEY(paycheckId) REFERENCES paychecks(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_payroll_deposits_paycheckId ON payroll_deposits (paycheckId)")
     }
 }

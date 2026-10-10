@@ -53,7 +53,7 @@ class QuickFindMigrationTest {
             }
             var quickId=0L
             repeat(2) {pass ->
-                val db=Room.databaseBuilder(context,ShiftDatabase::class.java,name).addMigrations(MIGRATION_1_2,MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
+                val db=Room.databaseBuilder(context,ShiftDatabase::class.java,name).addMigrations(MIGRATION_1_2,MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build()
                 try {
                     val schedule=db.shifts().scheduleSnapshot().single()
                     assertEquals(7L,schedule.id);assertEquals(20731L,schedule.date);assertEquals(14400,schedule.scheduledStart)
@@ -69,7 +69,7 @@ class QuickFindMigrationTest {
                     val quick=QuickFindRepository(db)
                     if(pass==0) {assertTrue(quick.items.first().isEmpty());quickId=quick.save(null,"Honey","2","Near syrup","sweetener",true);quick.select(quickId)}
                     else {val item=quick.items.first().single();assertEquals(quickId,item.id);assertEquals("Honey",item.name);assertTrue(item.isFavorite);assertEquals(1L,item.useCount)}
-                    assertEquals(5,db.openHelper.readableDatabase.version)
+                    assertEquals(6,db.openHelper.readableDatabase.version)
                 } finally {db.close()}
             }
             scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)

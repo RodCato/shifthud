@@ -21,7 +21,7 @@ import com.shifthud.ui.dashboard.*
 import java.time.*
 import java.time.format.DateTimeFormatter
 
-@Composable fun AnalyticsScreen(analytics: AnalyticsViewModel, vm: ShiftViewModel, data: ShiftUiState, busy: Boolean, back: () -> Unit) {
+@Composable fun AnalyticsScreen(analytics: AnalyticsViewModel, vm: ShiftViewModel, data: ShiftUiState, busy: Boolean, back: () -> Unit, openPaychecks: (LocalDate) -> Unit = {}) {
     val state by analytics.state.collectAsStateWithLifecycle()
     val weekly by analytics.weekly.collectAsStateWithLifecycle()
     val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
@@ -38,6 +38,7 @@ import java.time.format.DateTimeFormatter
             TextButton(onClick=back) { Text("‹ DASHBOARD") }
             Text("Work analytics", style=MaterialTheme.typography.headlineMedium)
             Text("Recorded work · Estimated base gross", style=MaterialTheme.typography.bodyMedium)
+            OutlinedButton(onClick={openPaychecks(state.period.start)}) { Text("PAYCHECKS") }
         }
         item {
             Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
