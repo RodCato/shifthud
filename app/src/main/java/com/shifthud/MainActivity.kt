@@ -97,7 +97,7 @@ class MainActivity : ComponentActivity() {
                 Scaffold(snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
                     NavigationBar {
                         listOf("Dashboard", "Schedule", "Quick Find", "Settings").forEach { destination ->
-                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard").let { it == destination || ((it == "Analytics" || it.startsWith("Paychecks")) && destination == "Dashboard") }, onClick = { if (destination == "Quick Find") quickFindFocusRequest++; nav.selectTab(destination) }, icon = { if (destination == "Quick Find") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_search), contentDescription = null) else Text(destination.take(1)) }, label = { Text(destination) })
+                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard").let { it == destination || (it == "HistoricalImport" && destination == "Settings") || ((it == "Analytics" || it.startsWith("Paychecks")) && destination == "Dashboard") }, onClick = { if (destination == "Quick Find") quickFindFocusRequest++; nav.selectTab(destination) }, icon = { if (destination == "Quick Find") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_search), contentDescription = null) else Text(destination.take(1)) }, label = { Text(destination) })
                         }
                     }
                 }) { padding ->
@@ -127,7 +127,15 @@ class MainActivity : ComponentActivity() {
                             })
                             com.shifthud.ui.quickfind.QuickFindScreen(quickVm, quickFindFocusRequest)
                         }
-                        composable("Settings") { SettingsScreen(data, vm, busy) }
+                        composable("Settings") { SettingsScreen(data, vm, busy) { nav.navigate("HistoricalImport") { launchSingleTop = true } } }
+                        composable("HistoricalImport") {
+                            val importer: com.shifthud.ui.importing.HistoricalImportViewModel = viewModel(factory = object : ViewModelProvider.Factory {
+                                @Suppress("UNCHECKED_CAST")
+                                override fun <T : ViewModel> create(modelClass: Class<T>, extras: androidx.lifecycle.viewmodel.CreationExtras): T =
+                                    com.shifthud.ui.importing.HistoricalImportViewModel((application as ShiftHudApplication).repository, extras.createSavedStateHandle()) as T
+                            })
+                            com.shifthud.ui.importing.HistoricalImportScreen(importer) { nav.popBackStack() }
+                        }
                     }
                 }
             }

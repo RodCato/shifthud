@@ -20,7 +20,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.shifthud.ui.*
 
-@Composable fun SettingsScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean) {
+@Composable fun SettingsScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean, openHistoricalImport: () -> Unit = {}) {
     val context = LocalContext.current
     val notifications = (context.applicationContext as ShiftHudApplication).notifications
     var reminderStatus by remember { mutableStateOf(notifications.reminderStatus()) }
@@ -35,6 +35,7 @@ import com.shifthud.ui.*
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium)
+        OutlinedButton(onClick=openHistoricalImport) { Text("Historical Data Import") }
         UpcomingSettingsSection()
         NotificationTestCenterSection()
         PayRateSettings(data, vm, busy)
