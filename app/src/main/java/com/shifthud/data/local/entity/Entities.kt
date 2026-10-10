@@ -20,7 +20,8 @@ data class WorkSessionEntity(
     val autoLunchMinutes: Int? = null,
     @ColumnInfo(defaultValue = "0") val lunchEndAutomatic: Boolean = false,
     @ColumnInfo(defaultValue = "0") val correctionRevision: Long = 0,
+    @ColumnInfo(defaultValue = "0") val manuallyEntered: Boolean = false,
 ) {
-    fun model() = WorkSession(id, scheduledShiftId, Instant.ofEpochMilli(clockIn), lunchStart?.let(Instant::ofEpochMilli), lunchEnd?.let(Instant::ofEpochMilli), clockOut?.let(Instant::ofEpochMilli), ShiftState.valueOf(state), autoLunchMinutes, lunchEndAutomatic, correctionRevision)
+    fun model() = WorkSession(id, scheduledShiftId, Instant.ofEpochMilli(clockIn), lunchStart?.let(Instant::ofEpochMilli), lunchEnd?.let(Instant::ofEpochMilli), clockOut?.let(Instant::ofEpochMilli), ShiftState.valueOf(state), autoLunchMinutes, lunchEndAutomatic, correctionRevision, manuallyEntered)
 }
-fun WorkSession.entity() = WorkSessionEntity(id, scheduledShiftId, clockIn.toEpochMilli(), lunchStart?.toEpochMilli(), lunchEnd?.toEpochMilli(), clockOut?.toEpochMilli(), state.name, autoLunchMinutes, lunchEndAutomatic, correctionRevision)
+fun WorkSession.entity() = WorkSessionEntity(id, scheduledShiftId, clockIn.toEpochMilli(), lunchStart?.toEpochMilli(), lunchEnd?.toEpochMilli(), clockOut?.toEpochMilli(), state.name, autoLunchMinutes, lunchEndAutomatic, correctionRevision, manuallyEntered)

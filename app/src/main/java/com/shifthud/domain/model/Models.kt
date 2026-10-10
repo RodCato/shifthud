@@ -17,7 +17,7 @@ data class WorkSession(
     val id: Long = 0, val scheduledShiftId: Long? = null, val clockIn: Instant,
     val lunchStart: Instant? = null, val lunchEnd: Instant? = null,
     val clockOut: Instant? = null, val state: ShiftState = ShiftState.WORKING,
-    val autoLunchMinutes: Int? = null, val lunchEndAutomatic: Boolean = false, val correctionRevision: Long = 0,
+    val autoLunchMinutes: Int? = null, val lunchEndAutomatic: Boolean = false, val correctionRevision: Long = 0, val manuallyEntered: Boolean = false,
 ) {
     val autoLunchEndTarget: Instant? get() = lunchStart?.let { start -> autoLunchMinutes?.let { start.plusSeconds(it * 60L) } }
     init {

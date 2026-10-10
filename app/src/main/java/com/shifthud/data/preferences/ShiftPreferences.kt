@@ -55,6 +55,109 @@ class ShiftPreferences(context: Context, private val onChanged: suspend () -> Un
         store.edit { it[snoozeDuration] = minutes }
         withContext(NonCancellable) { onChanged() }
     }
+    suspend fun forgetSession(sessionId: Long) {
+        store.edit { p ->
+            listOf(warningHistory, attentionHistory, endHistory).forEach { key ->
+                val owner = p[key]?.let { runCatching { JSONObject(it).getLong("session") }.getOrNull() }
+                if (owner == sessionId) p.remove(key)
+            }
+        }
+    }
+    private val weeklyEnabled = booleanPreferencesKey("weekly_target_enabled")
+    private val weeklyMinutes = intPreferencesKey("weekly_target_minutes")
+    private val weeklyOffsets = stringSetPreferencesKey("weekly_target_warnings")
+    private val weeklyHistory = stringPreferencesKey("weekly_target_delivery")
+    private fun weeklySettings(p: Preferences) = com.shifthud.domain.weekly.WeeklyTargetSettings(p[weeklyEnabled] ?: true,
+        p[weeklyMinutes]?.takeIf { it in 1..10080 } ?: 2400,
+        p[weeklyOffsets]?.mapNotNull { it.toIntOrNull() }?.filter { it in com.shifthud.domain.weekly.WEEKLY_WARNING_MINUTES }?.toSet()
+            ?: com.shifthud.domain.weekly.WEEKLY_WARNING_MINUTES)
+    val weeklyTargetSettings = store.data.map(::weeklySettings)
+    suspend fun setWeeklyTarget(settings: com.shifthud.domain.weekly.WeeklyTargetSettings) {
+        store.edit { p ->
+            p[weeklyEnabled] = settings.enabled; p[weeklyMinutes] = settings.targetMinutes
+            p[weeklyOffsets] = settings.warnings.map { it.toString() }.toSet()
+        }
+        withContext(NonCancellable) { onChanged() }
+    }
+    suspend fun deliverWeeklyWarning(sessions: List<WorkSession>, schedule: List<com.shifthud.domain.model.ScheduledShift>,
+                                    now: Instant, zone: java.time.ZoneId,
+                                    post: (WeeklyWarningDecision, com.shifthud.domain.weekly.WeeklyTargetProgress) -> Boolean): WeeklyWarningDecision {
+        lateinit var decision: WeeklyWarningDecision
+        store.edit { p ->
+            val settings = weeklySettings(p)
+            val week = com.shifthud.domain.pay.workWeekFor(now.atZone(zone).toLocalDate()).start.toString()
+            // Retain receipts for each target tried this week, including switches back to an old target.
+            val history = p[weeklyHistory]?.let { runCatching { JSONObject(it) }.getOrNull() }
+                ?.takeIf { it.optString("week") == week } ?: JSONObject().put("week", week)
+            val targets = history.optJSONObject("targets") ?: JSONObject()
+            val targetKey = settings.targetMinutes.toString()
+            val previous = targets.optJSONObject(targetKey)?.let { j -> runCatching {
+                fun numbers(key: String) = j.getJSONArray(key).let { a -> (0 until a.length()).map { a.getInt(it) }.toSet() }
+                WeeklyWarningLedger(java.time.LocalDate.parse(week),
+                    com.shifthud.domain.weekly.WeeklyTargetSettings(j.getBoolean("enabled"), settings.targetMinutes, numbers("warnings")),
+                    numbers("consumed"), j.getString("corrections"))
+            }.getOrNull() }
+            val progress = com.shifthud.domain.weekly.weeklyTarget(sessions, schedule, settings, p[autoMinutes] ?: 60, now, zone)
+            decision = evaluateWeeklyWarning(progress, settings, previous, now, history.optString("activeTarget") != targetKey)
+            if (decision.boundary != null && post(decision, progress)) decision = decision.acknowledged()
+            val ledger = decision.ledger
+            if (ledger != previous || history.optString("activeTarget") != targetKey) {
+                targets.put(targetKey, JSONObject().put("enabled", ledger.settings.enabled)
+                    .put("warnings", JSONArray(ledger.settings.warnings.sorted())).put("consumed", JSONArray(ledger.consumed.sorted()))
+                    .put("corrections", ledger.correctionKey))
+                p[weeklyHistory] = history.put("targets", targets).put("activeTarget", targetKey).toString()
+            }
+        }
+        return decision
+    }
+    private val endEnabled = booleanPreferencesKey("shift_end_enabled")
+    private val endLead = intPreferencesKey("shift_end_lead")
+    private val endSnooze = intPreferencesKey("shift_end_snooze")
+    private val endHistory = stringPreferencesKey("shift_end_delivery")
+    private fun endSettings(p: Preferences) = ShiftEndSettings(p[endEnabled] ?: true,
+        p[endLead]?.takeIf { it in SHIFT_END_LEADS || (debugSettings && it == 2) } ?: 15,
+        p[endSnooze]?.takeIf { it in SHIFT_END_SNOOZES } ?: 10)
+    val shiftEndSettings = store.data.map(::endSettings)
+    suspend fun setShiftEnd(settings: ShiftEndSettings) {
+        require(settings.leadMinutes in SHIFT_END_LEADS || (debugSettings && settings.leadMinutes == 2))
+        require(settings.snoozeMinutes in SHIFT_END_SNOOZES)
+        store.edit { it[endEnabled] = settings.enabled; it[endLead] = settings.leadMinutes; it[endSnooze] = settings.snoozeMinutes }
+        withContext(NonCancellable) { onChanged() }
+    }
+    private fun endState(p: Preferences): ShiftEndDelivery? = p[endHistory]?.let { encoded -> runCatching {
+        val j = JSONObject(encoded)
+        ShiftEndDelivery(j.getLong("session"), Instant.ofEpochMilli(j.getLong("end")), j.getInt("lead"),
+            Instant.ofEpochMilli(j.getLong("target")), j.getLong("generation"), j.getBoolean("posted"), j.getBoolean("skipped"))
+    }.getOrNull() }
+    private fun saveEnd(p: MutablePreferences, state: ShiftEndDelivery?) {
+        if (state == null) p.remove(endHistory)
+        else p[endHistory] = JSONObject().put("session", state.sessionId).put("end", state.end.toEpochMilli())
+            .put("lead", state.lead).put("target", state.target.toEpochMilli()).put("generation", state.generation)
+            .put("posted", state.posted).put("skipped", state.skipped).toString()
+    }
+    suspend fun deliverShiftEnd(snapshot: com.shifthud.data.repository.ShiftSnapshot, now: Instant, zone: java.time.ZoneId,
+                                post: (ShiftEndDelivery, Int) -> Boolean): ShiftEndDecision {
+        var result = ShiftEndDecision(null)
+        store.edit { p ->
+            val previous = endState(p)
+            val settings = endSettings(p)
+            result = evaluateShiftEnd(snapshot, settings, previous, now, zone)
+            if (result.due && post(result.state!!, settings.snoozeMinutes))
+                result = result.copy(state = result.state!!.copy(posted = true), cancel = false)
+            if (result.state != previous) saveEnd(p, result.state)
+        }
+        return result
+    }
+    suspend fun snoozeShiftEnd(receipt: String, current: suspend () -> com.shifthud.data.repository.ShiftSnapshot,
+                               now: Instant, zone: java.time.ZoneId): Boolean {
+        var accepted = false
+        store.edit { p ->
+            val next = com.shifthud.notification.snoozeShiftEnd(current(), endSettings(p), endState(p), receipt, now, zone)
+            if (next != null) { saveEnd(p, next); accepted = true }
+        }
+        return accepted
+    }
+    suspend fun nextShiftEndTarget(): Instant? = endState(store.data.first())?.takeIf { !it.posted && !it.skipped }?.target
     private fun attention(p: Preferences): LunchAttention? = p[attentionHistory]?.let { encoded ->
         runCatching {
             val j = JSONObject(encoded)

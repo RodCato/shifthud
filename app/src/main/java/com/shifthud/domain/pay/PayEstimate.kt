@@ -6,7 +6,6 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.NumberFormat
 import java.time.*
-import java.time.temporal.TemporalAdjusters
 import java.util.Currency
 import java.util.Locale
 
@@ -41,36 +40,38 @@ fun money(cents: Long, locale: Locale): String = NumberFormat.getCurrencyInstanc
 }.format(BigDecimal.valueOf(cents, 2))
 
 data class PayEstimate(val paid: Duration, val grossCents: Long)
-data class WeekWindow(val start: Instant, val endExclusive: Instant)
-fun currentWeek(now: Instant, zone: ZoneId): WeekWindow {
-    val monday = now.atZone(zone).toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-    return WeekWindow(monday.atStartOfDay(zone).toInstant(), monday.plusWeeks(1).atStartOfDay(zone).toInstant())
+data class SessionContribution(val session: WorkSession, val paid: Duration, val grossCents: Long?)
+data class SessionBreakdown(val contributions: List<SessionContribution>) {
+    val paid: Duration get() = contributions.fold(Duration.ZERO) { total, row -> total.plus(row.paid) }
+    val grossCents: Long? get() = if (contributions.any { it.grossCents == null }) null
+        else contributions.fold(0L) { total, row -> Math.addExact(total, requireNotNull(row.grossCents)) }
 }
-
 class PayEstimator(private val engine: ShiftEngine) {
     fun session(session: WorkSession, rates: List<PayRate>, now: Instant, zone: ZoneId): PayEstimate {
         val paid = engine.durations(session, 360, now).paid
         return PayEstimate(paid, grossCents(paid, applicableRate(rates, session.clockIn, zone).centsPerHour))
     }
 
-    // Clip actual paid intervals to this week and now. Calendar weeks can be 167/169 hours at DST.
-    // Round each session's contribution once, then sum cents so displayed shift totals reconcile.
-    fun week(sessions: List<WorkSession>, rates: List<PayRate>, now: Instant, zone: ZoneId): PayEstimate {
-        val window = currentWeek(now, zone)
-        var paid = Duration.ZERO
-        var cents = 0L
-        sessions.forEach { session ->
-            val end = minOf(session.clockOut ?: now, now, window.endExclusive)
-            val start = maxOf(session.clockIn, window.start)
-            if (end > start) {
-                val lunchStart = maxOf(session.lunchStart ?: end, start)
-                val lunchEnd = minOf(session.lunchEnd ?: end, end)
-                val lunch = if (lunchEnd > lunchStart) Duration.between(lunchStart, lunchEnd) else Duration.ZERO
-                val contribution = Duration.between(start, end).minus(lunch)
-                paid = paid.plus(contribution)
-                cents = Math.addExact(cents, grossCents(contribution, applicableRate(rates, session.clockIn, zone).centsPerHour))
-            }
-        }
-        return PayEstimate(paid, cents)
+    // Both the displayed list and aggregate come from this single selected session set.
+    fun weekBreakdown(sessions: List<WorkSession>, rates: List<PayRate>, now: Instant, zone: ZoneId): SessionBreakdown {
+        val week = workWeekFor(now.atZone(zone).toLocalDate())
+        return breakdown(sessions.filter { it.clockIn.atZone(zone).toLocalDate() in week && it.clockIn <= now }, rates, now, zone)
     }
+
+    fun week(sessions: List<WorkSession>, rates: List<PayRate>, now: Instant, zone: ZoneId): PayEstimate {
+        val result = weekBreakdown(sessions, rates, now, zone)
+        return PayEstimate(result.paid, requireNotNull(result.grossCents))
+    }
+
+    fun breakdown(sessions: List<WorkSession>, rates: List<PayRate>, now: Instant, zone: ZoneId): SessionBreakdown =
+        SessionBreakdown(sessions.sortedWith(compareBy<WorkSession> { it.clockIn }.thenBy { it.id }).map { session ->
+            val start = session.clockIn
+            val end = maxOf(start, minOf(session.clockOut ?: now, now))
+            val lunchStart = maxOf(session.lunchStart ?: end, start)
+            val lunchEnd = minOf(session.lunchEnd ?: end, end)
+            val lunch = if (lunchEnd > lunchStart) Duration.between(lunchStart, lunchEnd) else Duration.ZERO
+            val paid = Duration.between(start, end).minus(lunch)
+            val rate = rates.filter { it.effectiveFrom <= start.atZone(zone).toLocalDate() }.maxByOrNull { it.effectiveFrom }
+            SessionContribution(session, paid, rate?.let { grossCents(paid, it.centsPerHour) })
+        })
 }

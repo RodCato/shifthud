@@ -31,3 +31,9 @@ fun autoLunchRefreshDelayMillis(session: com.shifthud.domain.model.WorkSession, 
     // An unsuccessful overdue reconciliation retries at the normal cadence, never a tight loop.
     return if (until > 0) minOf(minuteDelay, until) else minuteDelay
 }
+
+/** Upcoming absolute reminder targets share the existing loop; blocked overdue posts retry normally. */
+fun shiftEndRefreshDelayMillis(target: java.time.Instant?, now: java.time.Instant, baseDelay: Long): Long {
+    val remaining = target?.let { Duration.between(now, it).toMillis() }
+    return if (remaining != null && remaining > 0) minOf(baseDelay, remaining) else baseDelay
+}

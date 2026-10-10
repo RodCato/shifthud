@@ -34,6 +34,8 @@ class MainActivity : ComponentActivity() {
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     override fun onStart() {
         super.onStart()
+        com.shifthud.notification.upcoming.UpcomingReminders.createChannel(this)
+        lifecycleScope.launch { (application as ShiftHudApplication).upcoming.reschedule() }
         // Visible-activity recovery is permitted even when Android denied a background start.
         lifecycleScope.launch { (application as ShiftHudApplication).widgetRefresh.refresh() }
     }
@@ -45,6 +47,7 @@ class MainActivity : ComponentActivity() {
             explainNotifications = true
         }
     }
+    private var quickFindFocusRequest by mutableIntStateOf(0)
     private var widgetDestination by mutableStateOf<String?>(null)
     companion object { const val DESTINATION = "com.shifthud.widget.DESTINATION" }
     override fun onNewIntent(intent: Intent) {
@@ -52,8 +55,13 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         widgetDestination = intent.getStringExtra(DESTINATION)
     }
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt("quick_find_focus", quickFindFocusRequest)
+        super.onSaveInstanceState(outState)
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        quickFindFocusRequest = savedInstanceState?.getInt("quick_find_focus") ?: 0
         widgetDestination = if (savedInstanceState == null) intent.getStringExtra(DESTINATION) else null
         enableEdgeToEdge()
         setContent {
@@ -76,7 +84,8 @@ class MainActivity : ComponentActivity() {
                 val error by vm.error.collectAsStateWithLifecycle()
                 val nav = rememberNavController()
                 LaunchedEffect(widgetDestination) {
-                    widgetDestination?.takeIf { it == "Schedule" || it == "Dashboard" }?.let { destination ->
+                    widgetDestination?.takeIf { it == "Schedule" || it == "Dashboard" || it == "Settings" || it == com.shifthud.widget.QUICK_FIND_DESTINATION }?.let { destination ->
+                        if (destination == com.shifthud.widget.QUICK_FIND_DESTINATION) quickFindFocusRequest++
                         nav.navigate(destination) { popUpTo(nav.graph.startDestinationId); launchSingleTop = true }
                     }
                     widgetDestination = null
@@ -86,14 +95,21 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(error) { error?.let { snackbar.showSnackbar(it); vm.clearError() } }
                 Scaffold(snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
                     NavigationBar {
-                        listOf("Dashboard", "Schedule", "Settings").forEach { destination ->
-                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard") == destination, onClick = { nav.navigate(destination) { popUpTo(nav.graph.startDestinationId) { saveState = true }; launchSingleTop = true; restoreState = true } }, icon = { Text(destination.take(1)) }, label = { Text(destination) })
+                        listOf("Dashboard", "Schedule", "Quick Find", "Settings").forEach { destination ->
+                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard") == destination, onClick = { if (destination == "Quick Find") quickFindFocusRequest++; nav.selectTab(destination) }, icon = { if (destination == "Quick Find") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_search), contentDescription = null) else Text(destination.take(1)) }, label = { Text(destination) })
                         }
                     }
                 }) { padding ->
                     NavHost(nav, startDestination = "Dashboard", modifier = Modifier.padding(padding)) {
                         composable("Dashboard") { DashboardScreen(data, vm, busy) }
                         composable("Schedule") { ScheduleScreen(data, vm, busy) }
+                        composable("Quick Find") {
+                            val quickVm: com.shifthud.ui.quickfind.QuickFindViewModel = viewModel(factory = object : ViewModelProvider.Factory {
+                                @Suppress("UNCHECKED_CAST")
+                                override fun <T : ViewModel> create(modelClass: Class<T>): T = com.shifthud.ui.quickfind.QuickFindViewModel((application as ShiftHudApplication).quickFind) as T
+                            })
+                            com.shifthud.ui.quickfind.QuickFindScreen(quickVm, quickFindFocusRequest)
+                        }
                         composable("Settings") { SettingsScreen(data, vm, busy) }
                     }
                 }

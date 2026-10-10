@@ -20,7 +20,8 @@ class NotificationActionExecutor(repository: ShiftRepository, engine: ShiftEngin
 
 class NotificationActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val snooze = intent.action == ShiftNotifications.SNOOZE_ACTION
+        val endSnooze = intent.action == ShiftNotifications.END_SNOOZE_ACTION
+        val snooze = intent.action == ShiftNotifications.SNOOZE_ACTION || endSnooze
         val action = runCatching { LunchAction.valueOf(intent.action.orEmpty()) }.getOrNull()
         if (!snooze && action == null) return
         val receipt = intent.getStringExtra("receipt")
@@ -32,7 +33,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 withTimeout(8_000) {
                     val app = context.applicationContext as ShiftHudApplication
                     if (snooze) {
-                        try { app.notifications.snooze(sessionId, receipt!!) }
+                        try { if (endSnooze) app.notifications.snoozeEnd(sessionId, receipt!!) else app.notifications.snooze(sessionId, receipt!!) }
                         finally { app.widgetRefresh.refresh() }
                     } else NotificationActionExecutor(app.repository, app.engine) { app.widgetRefresh.refresh() }.execute(action!!, sessionId)
                 }
