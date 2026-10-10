@@ -26,9 +26,18 @@ class PaystubImportPersistenceTest {
         try {
             val repository=PayrollRepository(db);val e=extractPaystub(PAYSTUB_FIXTURE);val review=PayrollDraft.from(e.draft(e.start!!,e.end!!))
             val restored=PayrollDraft.restore(review.serialize()).model()
-            assertNull(restored.netCents);assertNull(restored.reportedHours);assertFalse(restored.deductionsComplete)
+            assertNull(restored.netCents);assertEquals("35.39".toBigDecimal(),restored.reportedHours);assertFalse(restored.deductionsComplete)
             assertTrue(repository.paychecks.first().isEmpty());assertTrue(db.shifts().observeSessions().first().isEmpty())
         }finally{db.close()}
+    }
+    @Test fun correctedImportDraftSurvivesSavedStateWithoutReapplyingOcr() {
+        val e=extractPaystub(CURRENT_PAYSTUB)
+        val edited=PayrollDraft.from(e.draft(e.start!!,e.end!!)).copy(hours="35.40",gross="567.00",notes="Corrected by user")
+        val restored=PayrollDraft.restore(edited.serialize())
+        assertEquals(edited,restored)
+        assertEquals("35.40".toBigDecimal(),restored.model().reportedHours)
+        assertEquals(56700L,restored.model().grossCents)
+        assertEquals(56624L,e.gross)
     }
     @Test fun confirmedFactsPersistAndDuplicateCannotOverwrite()=runBlocking {
         val context=RuntimeEnvironment.getApplication();val name="paystub-persistence.db";context.deleteDatabase(name)

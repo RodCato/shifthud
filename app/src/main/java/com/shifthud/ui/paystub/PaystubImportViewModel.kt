@@ -8,6 +8,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
 class PaystubImportViewModel(private val app:ShiftHudApplication,private val saved:SavedStateHandle):ViewModel() {
+    val rates=app.payRates.rates
     val text=saved.getStateFlow("recognized","")
     val message=MutableStateFlow<String?>(null)
     private val working=MutableStateFlow(false)

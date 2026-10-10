@@ -18,27 +18,35 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
-@Composable internal fun PaycheckEditor(initial:Paycheck,busy:Boolean,save:(Paycheck,(String?)->Unit)->Unit,review:PaystubExtraction?=null,dismiss:()->Unit) {
+@Composable internal fun PaycheckEditor(initial:Paycheck,busy:Boolean,save:(Paycheck,(String?)->Unit)->Unit,review:PaystubExtraction?=null,rates:List<com.shifthud.domain.pay.PayRate> = emptyList(),dismiss:()->Unit) {
     var draft by rememberSaveable(initial.id,initial.revision,stateSaver=PayrollDraft.saver){mutableStateOf(PayrollDraft.from(initial))}
     var error by rememberSaveable{mutableStateOf<String?>(null)}
     var regular by rememberSaveable{mutableStateOf(review?.regular?.toPlainString().orEmpty())}
     var overtime by rememberSaveable{mutableStateOf(review?.overtime?.toPlainString().orEmpty())}
     var calculatedNetAccepted by rememberSaveable{mutableStateOf(false)}
     var confirmed by rememberSaveable{mutableStateOf(false)}
+    var detailsExpanded by rememberSaveable{mutableStateOf(false)}
     var reviewedWarnings by rememberSaveable{mutableStateOf<String?>(null)}
-    val arithmetic=runCatching{paystubArithmetic(draft.model())}.getOrDefault(emptyList())
+    val arithmetic=runCatching{paystubArithmetic(draft.model()) + if(review!=null)(paystubRateCheck(draft.model(),parsePayrollHours(overtime),rates)+paystubSummaryCheck(draft.model(),review)) else emptyList()}.getOrDefault(emptyList())
     val warningKey=draft.serialize()
+    LaunchedEffect(warningKey){confirmed=false}
     Dialog(onDismissRequest={if(!busy)dismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(Modifier.fillMaxSize()) { Column(Modifier.safeDrawingPadding().imePadding().padding(16.dp)) {
             Text(if(initial.id==0L)"New paycheck" else "Edit paycheck",style=MaterialTheme.typography.headlineSmall)
-            Text("Manual personal record · Blank means unknown; enter 0 for a known zero.",style=MaterialTheme.typography.bodySmall)
+            Text("Blank means unknown; enter 0 for a known zero.",style=MaterialTheme.typography.bodySmall)
             LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(vertical=16.dp)) {
                 if(review!=null)item {
-                    Text("Review recognized paystub",style=MaterialTheme.typography.titleLarge)
-                    Text("No image is retained. Recognized text is shown below; correct every imported value before saving.")
+                    Text("PAYSTUB IMPORT REVIEW",style=MaterialTheme.typography.titleLarge)
+                    Text("Review required · Edit extracted values below. Nothing is saved until you confirm.")
+                    Text("Period: ${draft.start} – ${draft.end} · Pay date: ${draft.payDate.ifBlank{"Unknown"}}")
+                    Text("Gross: $${draft.gross.ifBlank{"Unknown"}} · Taxes: ${centsInput(review.taxTotal).ifBlank{"Unknown"}}")
+                    Text("Deposits: ${draft.deposits.joinToString(" + "){it.amount.ifBlank{"Unknown"}}.ifBlank{"Unknown"}}")
                     review.warnings.forEach{Text("• $it",style=MaterialTheme.typography.bodySmall)}
-                    Text("Recognized text",style=MaterialTheme.typography.titleMedium)
-                    Text(review.source,style=MaterialTheme.typography.bodySmall)
+                    TextButton(onClick={detailsExpanded=!detailsExpanded}){Text(if(detailsExpanded)"HIDE OCR DETAILS" else "EXPAND OCR DETAILS")}
+                    if(detailsExpanded) {
+                        Text(review.source,style=MaterialTheme.typography.bodySmall)
+                        review.confidence.forEach{(field,confidence)->Text("$field: ${confidence.name.replace('_',' ')}",style=MaterialTheme.typography.bodySmall)}
+                    }
                     Text("Regular and overtime hours",style=MaterialTheme.typography.titleMedium)
                     NumericField("Regular hours",regular,!busy){regular=it;confirmed=false}
                     NumericField("Overtime hours (if provided)",overtime,!busy){overtime=it;confirmed=false}
@@ -49,7 +57,7 @@ import java.time.format.FormatStyle
                         draft=draft.copy(hours=parts.reduce(java.math.BigDecimal::add).toPlainString());confirmed=false
                     }catch(e:Exception){error=e.message}}){Text("USE ENTERED HOURS TOTAL")}
                     review.calculatedNet?.takeIf{review.reportedNet==null}?.let{suggested->
-                        Text("Calculated net suggestion: $${centsInput(suggested)} from recognized gross less totals. This was NOT explicitly labeled net pay.")
+                        Text("Suggested net: $${centsInput(suggested)} (calculated, not reported)")
                         OutlinedButton(enabled=!busy,onClick={draft=draft.copy(net=centsInput(suggested));calculatedNetAccepted=true;confirmed=false}){Text("ACCEPT CALCULATED NET")}
                     }
                     Text("Recognized total taxes: ${centsInput(review.taxTotal).ifBlank{"Unknown"}} · Total deductions: ${centsInput(review.deductionTotal).ifBlank{"Unknown"}}. Summary rows are not added as deductions.",style=MaterialTheme.typography.bodySmall)
