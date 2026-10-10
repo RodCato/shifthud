@@ -69,7 +69,7 @@ class AnalyticsRepositoryTest {
         records.addHistorical(input(),zone);records.clockIn()
         val before=records.sessions.first();val latest=records.latestSession.first();val schedule=records.schedule.first();val effects=sideEffects
         repeat(3){analytics.observe(week.move(-it.toLong()),zone,ticks).first();analytics.observe(AnalyticsPeriod.month(YearMonth.of(2026,10).minusMonths(it.toLong())),zone,ticks).first()}
-        assertEquals(before,records.sessions.first());assertEquals(latest,records.latestSession.first());assertEquals(schedule,records.schedule.first());assertEquals(effects,sideEffects);assertEquals(5,db.openHelper.readableDatabase.version)
+        assertEquals(before,records.sessions.first());assertEquals(latest,records.latestSession.first());assertEquals(schedule,records.schedule.first());assertEquals(effects,sideEffects);assertEquals(6,db.openHelper.readableDatabase.version)
         assertNull(Shadows.shadowOf(RuntimeEnvironment.getApplication()).nextStartedService)
     }
     @Test fun historicalMonthInsertionAppearsInMonthNotCurrentWeek()=runBlocking {

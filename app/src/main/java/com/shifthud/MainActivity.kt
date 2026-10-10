@@ -97,7 +97,7 @@ class MainActivity : ComponentActivity() {
                 Scaffold(snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
                     NavigationBar {
                         listOf("Dashboard", "Schedule", "Quick Find", "Settings").forEach { destination ->
-                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard").let { it == destination || (it == "Analytics" && destination == "Dashboard") }, onClick = { if (destination == "Quick Find") quickFindFocusRequest++; nav.selectTab(destination) }, icon = { if (destination == "Quick Find") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_search), contentDescription = null) else Text(destination.take(1)) }, label = { Text(destination) })
+                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard").let { it == destination || ((it == "Analytics" || it.startsWith("Paychecks")) && destination == "Dashboard") }, onClick = { if (destination == "Quick Find") quickFindFocusRequest++; nav.selectTab(destination) }, icon = { if (destination == "Quick Find") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_search), contentDescription = null) else Text(destination.take(1)) }, label = { Text(destination) })
                         }
                     }
                 }) { padding ->
@@ -109,7 +109,15 @@ class MainActivity : ComponentActivity() {
                                 override fun <T : ViewModel> create(modelClass: Class<T>, extras: androidx.lifecycle.viewmodel.CreationExtras): T =
                                     com.shifthud.ui.analytics.AnalyticsViewModel(application as ShiftHudApplication, extras.createSavedStateHandle()) as T
                             })
-                            com.shifthud.ui.analytics.AnalyticsScreen(analytics, vm, data, busy) { nav.popBackStack() }
+                            com.shifthud.ui.analytics.AnalyticsScreen(analytics, vm, data, busy, back = { nav.popBackStack() }, openPaychecks = { nav.navigate("Paychecks/$it") { launchSingleTop = true } })
+                        }
+                        composable("Paychecks/{start}") { paycheckEntry ->
+                            val payroll: com.shifthud.ui.payroll.PaychecksViewModel = viewModel(factory = object : ViewModelProvider.Factory {
+                                @Suppress("UNCHECKED_CAST")
+                                override fun <T : ViewModel> create(modelClass: Class<T>, extras: androidx.lifecycle.viewmodel.CreationExtras): T =
+                                    com.shifthud.ui.payroll.PaychecksViewModel(application as ShiftHudApplication, extras.createSavedStateHandle(), java.time.LocalDate.parse(paycheckEntry.arguments?.getString("start"))) as T
+                            })
+                            com.shifthud.ui.payroll.PaychecksScreen(payroll) { nav.popBackStack() }
                         }
                         composable("Schedule") { ScheduleScreen(data, vm, busy) }
                         composable("Quick Find") {

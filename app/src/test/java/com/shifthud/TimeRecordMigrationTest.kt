@@ -42,7 +42,7 @@ class TimeRecordMigrationTest {
             old.version=1
         }
         repeat(2) {
-            val db=Room.databaseBuilder(context,ShiftDatabase::class.java,name).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
+            val db=Room.databaseBuilder(context,ShiftDatabase::class.java,name).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build()
             try {
                 // Opening Room performs migration and validates the complete version-5 schema.
                 val active=db.shifts().session(10)!!.model()
@@ -55,7 +55,7 @@ class TimeRecordMigrationTest {
                 assertEquals(Instant.ofEpochMilli(4000),completed.clockOut)
                 val repo=ShiftRepository(db,ShiftEngine())
                 assertFalse(repo.reconcileAutoLunch(Instant.parse("2026-10-05T12:00:00Z")))
-                assertEquals(5,db.openHelper.readableDatabase.version)
+                assertEquals(6,db.openHelper.readableDatabase.version)
             } finally {db.close()}
         }
         context.deleteDatabase(name)
