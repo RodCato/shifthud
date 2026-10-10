@@ -25,6 +25,8 @@ android {
 }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 dependencies {
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("androidx.exifinterface:exifinterface:1.4.2")
     implementation(platform("androidx.compose:compose-bom:2025.11.01"))
     implementation("androidx.compose.material3:material3")
     implementation("androidx.glance:glance-appwidget:1.2.0")

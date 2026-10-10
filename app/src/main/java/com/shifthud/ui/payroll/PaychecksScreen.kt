@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.*
 
-@Composable fun PaychecksScreen(vm:PaychecksViewModel,back:()->Unit) {
+@Composable fun PaychecksScreen(vm:PaychecksViewModel,back:()->Unit,importImage:(LocalDate,LocalDate)->Unit = {_,_->}) {
     val state by vm.state.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     var editing by rememberSaveable{mutableStateOf<String?>(null)}
@@ -44,6 +44,7 @@ import java.time.format.*
                     TextButton(onClick={vm.week(p.periodStart.plusWeeks(1))},modifier=Modifier.semantics{contentDescription="Next workweek"}){Text("›")}
                 }
                 OutlinedButton(onClick={selecting=true}){Text("SELECT WORKWEEK")}
+                OutlinedButton(enabled=!busy,onClick={importImage(p.periodStart,p.periodEnd)}){Text("Import Paystub Screenshot")}
                 Button(enabled=!busy,onClick={edit(p)}){Text(if(p.id==0L)"CREATE PAYCHECK" else "EDIT PAYCHECK")}
             }
             item { Section("ShiftHUD · Recorded work") {
