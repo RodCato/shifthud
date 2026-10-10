@@ -14,7 +14,7 @@ import com.shifthud.domain.pay.*
 import com.shifthud.ui.*
 import java.time.*
 
-@Composable fun DashboardScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean) {
+@Composable fun DashboardScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean, openAnalytics: () -> Unit = {}) {
     val calendar by vm.calendar.collectAsState()
     LaunchedEffect(Unit) { vm.calendarMonth(YearMonth.now()) }
     var showWeek by remember { mutableStateOf(false) }
@@ -102,6 +102,7 @@ import java.time.*
             Text("Est. gross: ${week.grossCents?.let { money(it, locale) } ?: "Unavailable"}", style = MaterialTheme.typography.titleLarge)
         } else Text(data.pay.error ?: "Loading weekly records…")
         TextButton(enabled = data.pay.loaded, onClick = { showWeek = true }) { Text("VIEW WEEK BREAKDOWN") }
+        OutlinedButton(onClick = openAnalytics) { Text("WORK ANALYTICS") }
         WeeklyTargetSection(data)
         WorkCalendarSection(data, calendar, vm, busy, week, showWeek && data.pay.loaded, { showWeek = false }) { recordId = it }
         Text("Personal estimates only. Base pay excludes overtime premiums, taxes, withholding, bonuses, differentials, and payroll rounding. Not an official Publix app or employer timekeeping record.", style = MaterialTheme.typography.bodySmall)

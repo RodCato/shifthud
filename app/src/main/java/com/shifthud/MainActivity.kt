@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -96,12 +97,20 @@ class MainActivity : ComponentActivity() {
                 Scaffold(snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
                     NavigationBar {
                         listOf("Dashboard", "Schedule", "Quick Find", "Settings").forEach { destination ->
-                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard") == destination, onClick = { if (destination == "Quick Find") quickFindFocusRequest++; nav.selectTab(destination) }, icon = { if (destination == "Quick Find") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_search), contentDescription = null) else Text(destination.take(1)) }, label = { Text(destination) })
+                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard").let { it == destination || (it == "Analytics" && destination == "Dashboard") }, onClick = { if (destination == "Quick Find") quickFindFocusRequest++; nav.selectTab(destination) }, icon = { if (destination == "Quick Find") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_search), contentDescription = null) else Text(destination.take(1)) }, label = { Text(destination) })
                         }
                     }
                 }) { padding ->
                     NavHost(nav, startDestination = "Dashboard", modifier = Modifier.padding(padding)) {
-                        composable("Dashboard") { DashboardScreen(data, vm, busy) }
+                        composable("Dashboard") { DashboardScreen(data, vm, busy) { nav.navigate("Analytics") { launchSingleTop = true } } }
+                        composable("Analytics") {
+                            val analytics: com.shifthud.ui.analytics.AnalyticsViewModel = viewModel(factory = object : ViewModelProvider.Factory {
+                                @Suppress("UNCHECKED_CAST")
+                                override fun <T : ViewModel> create(modelClass: Class<T>, extras: androidx.lifecycle.viewmodel.CreationExtras): T =
+                                    com.shifthud.ui.analytics.AnalyticsViewModel(application as ShiftHudApplication, extras.createSavedStateHandle()) as T
+                            })
+                            com.shifthud.ui.analytics.AnalyticsScreen(analytics, vm, data, busy) { nav.popBackStack() }
+                        }
                         composable("Schedule") { ScheduleScreen(data, vm, busy) }
                         composable("Quick Find") {
                             val quickVm: com.shifthud.ui.quickfind.QuickFindViewModel = viewModel(factory = object : ViewModelProvider.Factory {
