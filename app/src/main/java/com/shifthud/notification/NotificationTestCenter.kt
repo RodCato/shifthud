@@ -11,12 +11,14 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.shifthud.MainActivity
 import com.shifthud.R
+import com.shifthud.notification.upcoming.*
 
 /** Only implemented production channels. IDs are reserved exclusively for manual tests. */
 enum class TestNotificationChannel(val label: String, val channelId: String, val testId: Int, val title: String, val body: String) {
     LUNCH("Lunch reminders", ShiftNotifications.WARNING_CHANNEL, 2001, "ShiftHUD · Lunch Test", "Test lunch alert — check your Garmin."),
     SHIFT_END("Shift end reminders", ShiftNotifications.END_CHANNEL, 2002, "ShiftHUD · Shift End Test", "Test shift-end alert — check your Garmin."),
-    WEEKLY("Weekly hours reminders", ShiftNotifications.WEEKLY_CHANNEL, 2003, "ShiftHUD · Weekly Hours Test", "Test 40-hour alert — check your Garmin.")
+    WEEKLY("Weekly hours reminders", ShiftNotifications.WEEKLY_CHANNEL, 2003, "ShiftHUD · Weekly Hours Test", "Test 40-hour alert — check your Garmin."),
+    UPCOMING("Tomorrow’s shift reminder", UpcomingReminders.CHANNEL, 2004, "ShiftHUD · Tomorrow Test", "Sample only · Tomorrow at 5:00 AM–2:00 PM")
 }
 data class NotificationTestStatus(val permissionGranted: Boolean, val appEnabled: Boolean, val channel: ReminderChannelStatus) {
     val blockedReason: String? get() = when {
@@ -47,17 +49,18 @@ class NotificationTestCenter(private val context: Context, private val elapsedMi
         else Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
             .putExtra(Settings.EXTRA_CHANNEL_ID, channel.channelId)
     }
-    fun notification(channel: TestNotificationChannel): Notification {
+    fun notification(channel: TestNotificationChannel, content: UpcomingContent? = null): Notification {
         val open = PendingIntent.getActivity(context, channel.testId,
             Intent(context, MainActivity::class.java).putExtra(MainActivity.DESTINATION, "Settings")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(context, channel.channelId).setSmallIcon(R.drawable.ic_stat_shift)
-            .setContentTitle(channel.title).setContentText(channel.body).setContentIntent(open)
+            .setContentTitle(content?.title ?: channel.title).setContentText(content?.text ?: channel.body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content?.expanded ?: channel.body)).setContentIntent(open)
             .setAutoCancel(true).setOnlyAlertOnce(false).setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_HIGH).build()
     }
-    @Synchronized fun post(channel: TestNotificationChannel): NotificationTestResult {
+    @Synchronized fun post(channel: TestNotificationChannel, content: UpcomingContent? = null): NotificationTestResult {
         val state = status(channel)
         state.blockedReason?.let { return NotificationTestResult(false, it) }
         val now = elapsedMillis()
@@ -67,7 +70,7 @@ class NotificationTestCenter(private val context: Context, private val elapsedMi
             // Cancel only this channel's manual test so repeated taps are fresh posting events.
             // Other tests and all production notifications remain untouched.
             manager.cancel(channel.testId)
-            manager.notify(channel.testId, notification(channel))
+            manager.notify(channel.testId, notification(channel, content))
             lastPostedAt = now
             NotificationTestResult(true, "Notification posted to Android. Check your Garmin. Watch delivery cannot be confirmed by ShiftHUD.")
         } catch (_: SecurityException) {

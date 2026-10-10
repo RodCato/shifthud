@@ -28,6 +28,7 @@ class ShiftNotifications(private val context: Context) {
     @Volatile var nextWeeklyTarget: Instant? = null
         private set
     fun createChannels() {
+        com.shifthud.notification.upcoming.UpcomingReminders.createChannel(context)
         manager.createNotificationChannel(NotificationChannel(ActiveShiftService.CHANNEL_ID, context.getString(R.string.active_shift_channel), NotificationManager.IMPORTANCE_LOW).apply {
             description = context.getString(R.string.active_shift_channel_description)
             setSound(null, null)

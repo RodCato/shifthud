@@ -11,6 +11,14 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/shift_hud_widget"/>
         </receiver>
+        <receiver android:name=".notification.upcoming.UpcomingRecoveryReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+            </intent-filter>
+        </receiver>
         <receiver android:name=".notification.NotificationActionReceiver" android:exported="false" />
         <service android:name=".service.ActiveShiftService" android:exported="false"
             android:stopWithTask="false" android:foregroundServiceType="specialUse">

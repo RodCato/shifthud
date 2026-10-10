@@ -25,13 +25,13 @@ class NotificationTestCenterTest {
         center=NotificationTestCenter(context){now}
     }
     @Test fun onlyImplementedChannelsAndExactMapping() {
-        assertEquals(listOf("lunch_reminders","shift_end_reminders","weekly_hours_reminders"),TestNotificationChannel.entries.map{it.channelId})
+        assertEquals(listOf("lunch_reminders","shift_end_reminders","weekly_hours_reminders","upcoming_shift_reminders"),TestNotificationChannel.entries.map{it.channelId})
         TestNotificationChannel.entries.forEach { assertEquals(it.channelId,center.notification(it).channelId) }
     }
     @Test fun idsAreDistinctAndNeverProduction() {
         val ids=TestNotificationChannel.entries.map{it.testId}
         assertEquals(ids.size,ids.toSet().size)
-        assertTrue(ids.none{it in setOf(ActiveShiftService.NOTIFICATION_ID,ShiftNotifications.WARNING_ID,ShiftNotifications.END_ID,ShiftNotifications.WEEKLY_ID)})
+        assertTrue(ids.none{it in setOf(ActiveShiftService.NOTIFICATION_ID,ShiftNotifications.WARNING_ID,ShiftNotifications.END_ID,ShiftNotifications.WEEKLY_ID,com.shifthud.notification.upcoming.UpcomingReminders.ID)})
     }
     @Test fun realPostsRemainObservableAcrossChannels() {
         TestNotificationChannel.entries.forEach { assertTrue(center.post(it).posted);now+=3000 }
@@ -47,7 +47,7 @@ class NotificationTestCenterTest {
         }
     }
     @Test fun ongoingAndProductionRemindersUntouched() {
-        val productionIds=listOf(1001,1002,1003,1004)
+        val productionIds=listOf(1001,1002,1003,1004,1005)
         productionIds.forEach { manager.notify(it,ShiftNotifications(context).ongoing()) }
         val before=manager.activeNotifications.associate{it.id to it.notification}
         TestNotificationChannel.entries.forEach {center.post(it);now+=3000}

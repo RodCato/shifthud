@@ -12,10 +12,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.shifthud.ShiftHudApplication
 import com.shifthud.notification.*
+import kotlinx.coroutines.launch
 
 @Composable internal fun NotificationTestCenterSection() {
     val context = LocalContext.current
-    val center = (context.applicationContext as ShiftHudApplication).notifications.testCenter
+    val app = context.applicationContext as ShiftHudApplication
+    val center = app.notifications.testCenter
+    val scope = rememberCoroutineScope()
     var revision by remember { mutableIntStateOf(0) }
     var resumeRevision by remember { mutableIntStateOf(0) }
     LifecycleResumeEffect(Unit) { revision++; resumeRevision++; onPauseOrDispose { } }
@@ -28,8 +31,13 @@ import com.shifthud.notification.*
             Text(channel.label, style = MaterialTheme.typography.titleMedium)
             Text(status.channel.description, style = MaterialTheme.typography.bodySmall)
             status.blockedReason?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Button(onClick = { result = center.post(channel); revision++ },
-                modifier = Modifier.semantics { contentDescription = "Test ${channel.label}" }) { Text("TEST") }
+            Button(onClick = { scope.launch {
+                result = try { if (channel == TestNotificationChannel.UPCOMING) app.upcoming.test(center) else center.post(channel) }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { NotificationTestResult(false, "Could not read tomorrow’s schedule. Please try again.") }
+                revision++
+            } },
+                modifier = Modifier.semantics { contentDescription = "Test ${channel.label}" }) { Text(if (channel == TestNotificationChannel.UPCOMING) "TEST TOMORROW’S SHIFT REMINDER" else "TEST") }
             result?.let { Text(it.message, Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
             OutlinedButton(onClick = {
                 try { context.startActivity(center.settingsIntent(channel)) }

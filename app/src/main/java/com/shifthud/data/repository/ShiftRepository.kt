@@ -17,6 +17,7 @@ class ShiftRepository(
     private val onChanged: suspend () -> Unit = {},
     private val onHistoricalChanged: suspend () -> Unit = {},
     private val autoLunchSettings: suspend () -> AutoLunchSettings = { AutoLunchSettings() },
+    private val onScheduleChanged: suspend () -> Unit = {},
     private val onSessionDeleted: suspend (Long) -> Unit = {},
 ) {
     private val dao = db.shifts()
@@ -29,8 +30,8 @@ class ShiftRepository(
     val sessions = dao.observeSessions().map { rows -> rows.map { it.model() } }
     val latestSession = dao.observeLatest().map { it?.model() }
 
-    suspend fun save(shift: ScheduledShift) = changed { dao.save(shift.entity()) }
-    suspend fun delete(id: Long) = changed { dao.delete(id) }
+    suspend fun save(shift: ScheduledShift) = changed { dao.save(shift.entity()) }.also { withContext(NonCancellable) { onScheduleChanged() } }
+    suspend fun delete(id: Long) = changed { dao.delete(id) }.also { withContext(NonCancellable) { onScheduleChanged() } }
 
     suspend fun weeklySessions(now: Instant, zone: ZoneId): List<WorkSession> {
         val window = com.shifthud.domain.pay.currentWeek(now, zone)

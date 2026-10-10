@@ -34,6 +34,8 @@ class MainActivity : ComponentActivity() {
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     override fun onStart() {
         super.onStart()
+        com.shifthud.notification.upcoming.UpcomingReminders.createChannel(this)
+        lifecycleScope.launch { (application as ShiftHudApplication).upcoming.reschedule() }
         // Visible-activity recovery is permitted even when Android denied a background start.
         lifecycleScope.launch { (application as ShiftHudApplication).widgetRefresh.refresh() }
     }
