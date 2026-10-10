@@ -14,7 +14,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import com.shifthud.backup.guardedLock as withLock
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 
