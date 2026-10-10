@@ -28,7 +28,6 @@ import java.util.Locale
     val use24 = android.text.format.DateFormat.is24HourFormat(context)
     val estimator = remember(vm.engine) { PayEstimator(vm.engine) }
     var selectedDate by rememberSaveable { mutableStateOf<String?>(null) }
-    var deleting by remember { mutableStateOf<WorkSession?>(null) }
     val days = workCalendar(calendar.month, calendar.schedule, calendar.sessions, data.pay.rates, data.now, zone, estimator)
     val dateFormat = DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale)
     fun stamp(value: Instant): String = value.atZone(zone).format(DateTimeFormatter.ofPattern(
@@ -80,34 +79,9 @@ import java.util.Locale
     selectedDate?.let { selected ->
         val date = LocalDate.parse(selected)
         val day = days.firstOrNull { it.date == date }
-        if (day != null) AlertDialog(onDismissRequest = { selectedDate = null }, title = { Text(date.format(dateFormat)) }, text = {
-            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (day.workSessions.isEmpty()) Text(if (day.scheduledShifts.isEmpty()) "No shift or recorded work session." else "Scheduled · No recorded work session yet.")
-                if (day.workSessions.size > 1) {
-                    Text("TOTAL FOR DAY", style = MaterialTheme.typography.titleSmall)
-                    Text("Paid: ${recordDuration(day.paidDuration)}\nEst. gross: ${gross(day.estimatedGross)}")
-                }
-                day.breakdown.contributions.forEachIndexed { index, contribution ->
-                    val session = contribution.session
-                    key(session.id) {
-                        val durations = vm.engine.durations(session, data.threshold, data.now)
-                        Text("SESSION ${index + 1} · " + if (session.state == ShiftState.COMPLETE) "WORKED" else "ACTIVE", style = MaterialTheme.typography.titleSmall)
-                        Text("${stamp(session.clockIn)} – ${session.clockOut?.let(::stamp) ?: "In progress"}")
-                        Text(session.lunchStart?.let { "Lunch: ${stamp(it)} – ${session.lunchEnd?.let(::stamp) ?: "In progress"}" } ?: "Lunch: Not recorded")
-                        Text("Paid: ${recordDuration(contribution.paid)}\nStore: ${recordDuration(durations.store)}\nLunch: ${recordDuration(durations.lunch)}\nEst. gross: ${gross(contribution.grossCents)}")
-                        if (session.manuallyEntered) Text("Manually added", style = MaterialTheme.typography.labelMedium)
-                        if (session.lunchEndAutomatic) Text("Lunch end inferred automatically", style = MaterialTheme.typography.labelMedium)
-                        TextButton(enabled = !busy, onClick = { openRecord(session.id) }) { Text("EDIT TIME") }
-                        if (session.state == ShiftState.COMPLETE) TextButton(enabled = !busy, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error), onClick = { deleting = session }) { Text("DELETE SHIFT RECORD") }
-                        HorizontalDivider()
-                    }
-                }
-                day.scheduledShifts.forEach { schedule ->
-                    Text("Scheduled: ${schedule.start.atZone(zone).toInstant().let(::stamp)} – ${schedule.end.atZone(zone).toInstant().let(::stamp)}")
-                }
-            }
-        }, confirmButton = { TextButton(onClick = { selectedDate = null }) { Text("Close") } })
+        if (day != null) WorkDayDetailsDialog(day, data, vm, busy, { selectedDate = null }, openRecord)
     }
+
     if (showWeek) {
         val range = workWeekFor(data.now.atZone(zone).toLocalDate())
         AlertDialog(onDismissRequest = dismissWeek, title = { Text("THIS WEEK · ${range.start.format(DateTimeFormatter.ofPattern("MMM d", locale))}–${range.endInclusive.format(DateTimeFormatter.ofPattern("MMM d", locale))}") }, text = {
@@ -127,10 +101,5 @@ import java.util.Locale
                 }
             }
         }, confirmButton = { TextButton(onClick = dismissWeek) { Text("Close") } })
-    }
-    deleting?.let { session ->
-        DeleteShiftRecordDialog(session, vm, busy, data.now, { deleting = null }) {
-            vm.deleteHistorical(session) { deleting = null }
-        }
     }
 }
