@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.shifthud.data.local.ShiftDatabase
 import com.shifthud.data.local.entity.*
 import com.shifthud.domain.model.*
+import com.shifthud.domain.importing.*
 import com.shifthud.domain.usecase.*
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.map
@@ -85,11 +86,43 @@ class ShiftRepository(
 
     suspend fun addHistorical(input: HistoricalShiftInput, zone: ZoneId): Long = changed(historical = true) {
         db.withTransaction {
-            val session = input.session(zone, clock.instant())
-            checkOverlap(session)
-            val linked = historicalSchedule(session, dao.scheduleSnapshot().map { it.model() }, zone)
-            dao.insert(session.copy(scheduledShiftId = linked).entity())
+            insertHistorical(input.session(zone, clock.instant()), zone)
         }
+    }
+
+    private suspend fun insertHistorical(session: WorkSession, zone: ZoneId): Long {
+        checkOverlap(session)
+        val linked = historicalSchedule(session, dao.scheduleSnapshot().map { it.model() }, zone)
+        return dao.insert(session.copy(scheduledShiftId = linked).entity())
+    }
+
+    /** Recheck the fixed dataset inside one transaction; preview never authorizes replacement. */
+    suspend fun importBackfill(selected: Set<LocalDate>, zone: ZoneId): BackfillResult {
+        require(selected.all { date -> PUBLIX_BACKFILL.any { it.date == date } }) { "Unknown historical import date." }
+        val result = db.withTransaction {
+            val now = clock.instant()
+            val candidates = PUBLIX_BACKFILL.filter { it.date in selected }
+            // Validate the entire selection before writing, using the same manual-entry rules.
+            candidates.forEach { it.input.session(zone, now) }
+            val start = PUBLIX_BACKFILL.first().date.atStartOfDay(zone).toInstant()
+            val end = PUBLIX_BACKFILL.last().date.plusDays(1).atStartOfDay(zone).toInstant()
+            val existing = dao.importWindow(start.toEpochMilli(), end.toEpochMilli()).map { it.model() }.toMutableList()
+            val imported = mutableListOf<Long>()
+            val skipped = mutableListOf<BackfillReview>()
+            candidates.forEach { candidate ->
+                val review = reviewBackfill(candidate, existing, zone, now)
+                if (review.status != BackfillStatus.READY) skipped += review
+                else {
+                    val id = insertHistorical(review.session, zone)
+                    imported += id
+                    existing += review.session.copy(id = id)
+                }
+            }
+            BackfillResult(imported, skipped)
+        }
+        // No reminders or active-shift transitions; only the existing historical redraw path.
+        if (result.imported.isNotEmpty()) withContext(NonCancellable) { onHistoricalChanged() }
+        return result
     }
 
     suspend fun deleteHistorical(expected: WorkSession) {
