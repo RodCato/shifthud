@@ -32,6 +32,7 @@ import java.time.*
         Text("PUBLIX SHIFT", style = MaterialTheme.typography.headlineMedium)
         Text("ShiftHUD • Personal tracker", style = MaterialTheme.typography.labelLarge)
         if (!data.loaded) { CircularProgressIndicator(); return@Column }
+        WeeklyTargetSection(data)
         if (session == null) {
             Text(if (scheduled != null) "TODAY" else "OFF TODAY", style = MaterialTheme.typography.titleLarge)
             scheduled?.let { Text(it.timeLabel(), style = MaterialTheme.typography.headlineSmall); it.notes?.let { note -> Text(note) } }
@@ -103,7 +104,6 @@ import java.time.*
         } else Text(data.pay.error ?: "Loading weekly records…")
         TextButton(enabled = data.pay.loaded, onClick = { showWeek = true }) { Text("VIEW WEEK BREAKDOWN") }
         OutlinedButton(onClick = openAnalytics) { Text("WORK ANALYTICS") }
-        WeeklyTargetSection(data)
         WorkCalendarSection(data, calendar, vm, busy, week, showWeek && data.pay.loaded, { showWeek = false }) { recordId = it }
         Text("Personal estimates only. Base pay excludes overtime premiums, taxes, withholding, bonuses, differentials, and payroll rounding. Not an official Publix app or employer timekeeping record.", style = MaterialTheme.typography.bodySmall)
     }

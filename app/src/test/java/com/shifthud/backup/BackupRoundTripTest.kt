@@ -28,6 +28,7 @@ class BackupRoundTripTest {
     @Before fun unblock(){DataGate.blocked=false}
     @After fun cleanup(){DataGate.blocked=false;File(app.noBackupFilesDir,"restore").deleteRecursively()}
     private suspend fun seed() {
+        app.preferences.setPlanner(com.shifthud.domain.planner.PlannerSettings(60,31,com.shifthud.domain.planner.LunchStrategy.CUSTOM,mapOf(LocalDate.of(2026,10,9) to 45),setOf(60,30,15,0)))
         val db=app.database
         db.shifts().save(ScheduledShiftEntity(20,LocalDate.of(2026,9,26).toEpochDay(),14400,50400,60,"Unicode café 🥥"))
         com.shifthud.domain.importing.PUBLIX_BACKFILL.drop(1).forEachIndexed{i,record->

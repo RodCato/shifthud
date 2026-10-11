@@ -68,6 +68,7 @@ class ShiftViewModel(private val app: ShiftHudApplication) : ViewModel() {
         catch (e: CancellationException) { throw e }
         catch (e: Exception) { _error.value = e.message ?: "Could not save warning." }
     }
+    fun planner(settings: com.shifthud.domain.planner.PlannerSettings) = perform { app.preferences.setPlanner(settings) }
     fun weeklyTarget(settings: com.shifthud.domain.weekly.WeeklyTargetSettings) = perform { app.preferences.setWeeklyTarget(settings) }
     fun shiftEnd(settings: com.shifthud.notification.ShiftEndSettings) = perform { app.preferences.setShiftEnd(settings) }
     fun snoozeMinutes(minutes: Int) = perform { app.preferences.setSnoozeMinutes(minutes) }
