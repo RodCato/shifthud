@@ -21,11 +21,13 @@ import java.time.LocalDate
     var custom by remember(settings) { mutableStateOf(settings.custom.mapValues { it.value.toString() }) }
     var alerts by remember(settings) { mutableStateOf(settings.alerts) }
     var error by remember { mutableStateOf<String?>(null) }
-    Text("Clock-out planning",style=MaterialTheme.typography.titleLarge)
-    Text("Uses the weekly target above. Planning never changes actual lunch timers, reminders or schedules.")
-    OutlinedTextField(planned,{planned=it},label={Text("Planned lunch (minutes)")},singleLine=true,enabled=enabled,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number))
+    Text("Weekly Hours Planner",style=MaterialTheme.typography.titleLarge)
+    LunchPlanControl(vm,!enabled)
+    Text("Uses the weekly target above. Actual punches and lunch timers are unchanged. Bulk schedule edits require confirmation.")
+    Text("Default planned lunch duration: ${settings.plannedMinutes} minutes. Use Adjust lunch plan for a live preview.")
     OutlinedTextField(minimum,{minimum=it},label={Text("Minimum permitted lunch (minutes)")},singleLine=true,enabled=enabled,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number))
     Text("Confirm the minimum with your employer. Default 30 minutes is a planning assumption, not a policy determination.",style=MaterialTheme.typography.bodySmall)
+    Text("Confirmed per-shift and bulk lunch plans take precedence over these fallback strategies.",style=MaterialTheme.typography.bodySmall)
     LunchStrategy.entries.forEach { choice ->
         TextButton(enabled=enabled,onClick={strategy=choice}) { Text((if(strategy==choice) "✓ " else "")+when(choice) {
             LunchStrategy.FULL -> "Full lunches, scheduled departure"

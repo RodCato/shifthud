@@ -32,7 +32,7 @@ import java.time.*
         Text("PUBLIX SHIFT", style = MaterialTheme.typography.headlineMedium)
         Text("ShiftHUD • Personal tracker", style = MaterialTheme.typography.labelLarge)
         if (!data.loaded) { CircularProgressIndicator(); return@Column }
-        WeeklyTargetSection(data)
+        WeeklyTargetSection(data,vm,busy)
         if (session == null) {
             Text(if (scheduled != null) "TODAY" else "OFF TODAY", style = MaterialTheme.typography.titleLarge)
             scheduled?.let { Text(it.timeLabel(), style = MaterialTheme.typography.headlineSmall); it.notes?.let { note -> Text(note) } }

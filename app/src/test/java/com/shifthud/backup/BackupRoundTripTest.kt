@@ -30,7 +30,7 @@ class BackupRoundTripTest {
     private suspend fun seed() {
         app.preferences.setPlanner(com.shifthud.domain.planner.PlannerSettings(60,31,com.shifthud.domain.planner.LunchStrategy.CUSTOM,mapOf(LocalDate.of(2026,10,9) to 45),setOf(60,30,15,0)))
         val db=app.database
-        db.shifts().save(ScheduledShiftEntity(20,LocalDate.of(2026,9,26).toEpochDay(),14400,50400,60,"Unicode café 🥥"))
+        db.shifts().save(ScheduledShiftEntity(20,LocalDate.of(2026,9,26).toEpochDay(),14400,50400,60,"Unicode café 🥥",usesGlobalLunch=true,lunchPlanApplied=true))
         com.shifthud.domain.importing.PUBLIX_BACKFILL.drop(1).forEachIndexed{i,record->
             val session=record.input.session(ZoneId.of("America/Chicago"),Instant.parse("2026-10-10T00:00:00Z"))
             db.shifts().insert(session.copy(id=31L+i,scheduledShiftId=if(i==0)20 else null,
@@ -80,6 +80,18 @@ class BackupRoundTripTest {
             assertEquals(24L,employerDuration(p.reportedHours!!).minus(duration).seconds)
             assertEquals(12L,p.grossCents!!-gross)
         }finally{db.close()}
+    }
+    @Test fun schemaSixBackupUpgradesWithoutChangingPayrollOrLunchValues()=runBlocking {
+        seed();val old=manager.snapshot()
+        old.manifest.put("databaseVersion",6)
+        val row=old.data.getJSONObject("tables").getJSONArray("scheduled_shifts").getJSONObject(0)
+        row.remove("usesGlobalLunch");row.remove("lunchPlanApplied")
+        val decoded=BackupSnapshot.decode(old.bytes())
+        manager.validate(decoded)
+        val upgraded=decoded.data.getJSONObject("tables").getJSONArray("scheduled_shifts").getJSONObject(0)
+        assertEquals(60,upgraded.getInt("plannedLunchMinutes"));assertEquals(0,upgraded.getInt("usesGlobalLunch"))
+        assertEquals(0,upgraded.getInt("lunchPlanApplied"))
+        assertEquals(canonical(old.data.getJSONObject("tables").getJSONArray("paychecks")),canonical(decoded.data.getJSONObject("tables").getJSONArray("paychecks")))
     }
     @Test fun emptyBackupIsValidAndPreviewWritesNothing()=runBlocking {
         val before=manager.snapshot();manager.validate(BackupSnapshot.decode(before.bytes()))

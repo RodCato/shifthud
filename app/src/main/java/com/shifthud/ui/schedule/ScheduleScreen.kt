@@ -19,6 +19,8 @@ import com.shifthud.ui.*
 import java.time.*
 
 @Composable fun ScheduleScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean) {
+    val app=androidx.compose.ui.platform.LocalContext.current.applicationContext as com.shifthud.ShiftHudApplication
+    val planning by app.preferences.plannerSettings.collectAsState(initial=com.shifthud.domain.planner.PlannerSettings())
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var deletingId by rememberSaveable { mutableStateOf<Long?>(null) }
     val today = data.now.atZone(ZoneId.systemDefault()).toLocalDate()
@@ -33,7 +35,7 @@ import java.time.*
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(if (shift.date == today) "TODAY • ${shift.date.format(dateFormat)}" else shift.date.format(dateFormat), style = MaterialTheme.typography.titleMedium)
                         Text(shift.timeLabel())
-                        shift.plannedLunchMinutes?.let { Text("Planned lunch: $it minutes") }
+                        Text(if(shift.usesGlobalLunch || shift.plannedLunchMinutes==null) "Global default plan: ${shift.plannedLunchMinutes ?: planning.plannedMinutes} minutes" else "Individual override: ${shift.plannedLunchMinutes} minutes")
                         shift.notes?.let { Text(it) }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = { editingId = shift.id }, enabled = !busy) { Text("Edit") }
@@ -46,12 +48,12 @@ import java.time.*
     }
     editingId?.let { id ->
         val existing = data.schedule.firstOrNull { it.id == id }
-        key(id) { ShiftEditor(existing, today, busy, { editingId = null }) { vm.save(it) { editingId = null } } }
+        key(id) { ShiftEditor(existing, today, busy, planning.plannedMinutes, planning.minimumMinutes, { editingId = null }) { vm.save(it) { editingId = null } } }
     }
     deletingId?.let { id -> AlertDialog(onDismissRequest = { if (!busy) deletingId = null }, title = { Text("Delete scheduled shift?") }, text = { Text("Any recorded work session will be kept, without its schedule association.") }, confirmButton = { TextButton(onClick = { vm.delete(id) { deletingId = null } }, enabled = !busy) { Text("Delete") } }, dismissButton = { TextButton(onClick = { deletingId = null }, enabled = !busy) { Text("Cancel") } }) }
 }
 
-@Composable private fun ShiftEditor(existing: ScheduledShift?, today: LocalDate, busy: Boolean, dismiss: () -> Unit, save: (ScheduledShift) -> Unit) {
+@Composable private fun ShiftEditor(existing: ScheduledShift?, today: LocalDate, busy: Boolean, defaultMinutes: Int, minimumMinutes: Int, dismiss: () -> Unit, save: (ScheduledShift) -> Unit) {
     val valuesSaver = listSaver<SchedulePickerValues, Long>(
         save = { listOf(it.date.toEpochDay(), it.start.toNanoOfDay(), it.end.toNanoOfDay()) },
         restore = { SchedulePickerValues(LocalDate.ofEpochDay(it[0]), LocalTime.ofNanoOfDay(it[1]), LocalTime.ofNanoOfDay(it[2])) },
@@ -59,7 +61,7 @@ import java.time.*
     var values by rememberSaveable(stateSaver = valuesSaver) { mutableStateOf(SchedulePickerValues.initial(existing, today)) }
     var picker by rememberSaveable { mutableStateOf<String?>(null) }
     val locale = LocalConfiguration.current.locales[0]
-    var lunch by rememberSaveable { mutableStateOf(existing?.plannedLunchMinutes?.toString() ?: "") }
+    var lunch by rememberSaveable { mutableStateOf(existing?.takeUnless { it.usesGlobalLunch }?.plannedLunchMinutes?.toString() ?: "") }
     var notes by rememberSaveable { mutableStateOf(existing?.notes ?: "") }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
     AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text(if (existing == null) "Add shift" else "Edit shift") }, text = {
@@ -68,16 +70,17 @@ import java.time.*
             PickerField("Start", values.start.editorLabel(locale), !busy) { picker = "start" }
             PickerField("End", values.end.editorLabel(locale), !busy) { picker = "end" }
             Text("An end at or before start means the next day.")
-            OutlinedTextField(lunch, { lunch = it }, label = { Text("Lunch minutes (optional)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
+            Text(if(lunch.isBlank()) "Global default plan: ${existing?.takeIf { it.usesGlobalLunch }?.plannedLunchMinutes ?: defaultMinutes} minutes" else "Individual override")
+            OutlinedTextField(lunch, { lunch = it }, label = { Text("Override lunch minutes (blank = default)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
             OutlinedTextField(notes, { notes = it }, label = { Text("Note (optional)") }, maxLines = 3)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }, confirmButton = {
         TextButton(enabled = !busy, onClick = {
             val shift = try {
-                val planned = if (lunch.isBlank()) null else lunch.toInt().also { require(it in 0..1440) }
-                ScheduledShift(existing?.id ?: 0, values.date, values.start, values.end, planned, notes.trim().ifBlank { null })
-            } catch (_: Exception) { error = "Enter lunch of 0–1440 minutes, or leave it blank."; null }
+                val planned = if (lunch.isBlank()) existing?.takeIf { it.usesGlobalLunch }?.plannedLunchMinutes else lunch.toInt().also { require(it==existing?.plannedLunchMinutes || it in minimumMinutes..240) }
+                ScheduledShift(existing?.id ?: 0, values.date, values.start, values.end, planned, notes.trim().ifBlank { null }, usesGlobalLunch=lunch.isBlank(), lunchPlanApplied=if(lunch.isBlank()) existing?.lunchPlanApplied ?: false else true)
+            } catch (_: Exception) { error = "Enter lunch of $minimumMinutes–240 minutes, or leave it blank."; null }
             if (shift != null) save(shift)
         }) { Text("Save") }
     }, dismissButton = { TextButton(onClick = dismiss, enabled = !busy) { Text("Cancel") } })

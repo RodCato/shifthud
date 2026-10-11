@@ -8,11 +8,11 @@ enum class LunchStrategy { FULL, SHORTER, CUSTOM }
 data class PlannerSettings(val plannedMinutes: Int = 60, val minimumMinutes: Int = 30,
     val strategy: LunchStrategy = LunchStrategy.FULL, val custom: Map<LocalDate, Int> = emptyMap(), val alerts: Set<Int> = emptySet()) {
     init { require(alerts.all { it in setOf(60,30,15,0) }); require(minimumMinutes in 1..240 && plannedMinutes in minimumMinutes..240); require(custom.values.all { it in minimumMinutes..240 }) }
-    fun lunch(shift: ScheduledShift, finalDate: LocalDate?): Duration = Duration.ofMinutes(when(strategy) {
+    fun lunch(shift: ScheduledShift, finalDate: LocalDate?): Duration = Duration.ofMinutes((if(shift.lunchPlanApplied) shift.plannedLunchMinutes ?: plannedMinutes else when(strategy) {
         LunchStrategy.FULL -> shift.plannedLunchMinutes ?: plannedMinutes
-        LunchStrategy.SHORTER -> if(shift.date == finalDate) plannedMinutes else minimumMinutes
+        LunchStrategy.SHORTER -> if(shift.date == finalDate) shift.plannedLunchMinutes ?: plannedMinutes else minimumMinutes
         LunchStrategy.CUSTOM -> custom[shift.date] ?: shift.plannedLunchMinutes ?: plannedMinutes
-    }.coerceAtLeast(minimumMinutes).toLong())
+    }).coerceAtLeast(minimumMinutes).toLong())
 }
 data class ClockOutPlan(val completed: Duration, val activePaid: Duration, val remaining: Duration,
     val futurePaid: Duration, val projected: Duration, val target: Duration, val clockOut: Instant?,

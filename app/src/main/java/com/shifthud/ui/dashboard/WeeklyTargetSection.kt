@@ -15,7 +15,7 @@ import com.shifthud.ui.*
 import java.time.*
 import java.time.format.DateTimeFormatter
 
-@Composable internal fun WeeklyTargetSection(data: ShiftUiState) {
+@Composable internal fun WeeklyTargetSection(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean) {
     val context = LocalContext.current
     val app = context.applicationContext as ShiftHudApplication
     val settings by app.preferences.weeklyTargetSettings.collectAsState(initial = WeeklyTargetSettings())
@@ -45,6 +45,7 @@ import java.time.format.DateTimeFormatter
             if(data.session?.state == ShiftState.ON_LUNCH) Text("Paid time paused during lunch. Estimate updates when lunch ends.")
             plan.issues.forEach { Text(it,style=MaterialTheme.typography.bodySmall) }
             Text("Based only on saved shifts; confirm the week’s schedule is complete. Leaving early requires manager approval.",style=MaterialTheme.typography.bodySmall)
+            com.shifthud.ui.settings.LunchPlanControl(vm,busy)
             TextButton(onClick={details=!details}) { Text(if(details) "HIDE PLANNING DETAILS" else "PLANNING DETAILS") }
             if(details) {
                 Text("Completed: ${plan.completed.display()}\nActive paid work: ${plan.activePaid.display()}\nFuture scheduled paid work: ${plan.futurePaid.display()}")

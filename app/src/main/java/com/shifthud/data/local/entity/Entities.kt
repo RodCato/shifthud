@@ -9,10 +9,12 @@ data class ScheduledShiftEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val date: Long, val scheduledStart: Int, val scheduledEnd: Int,
     val plannedLunchMinutes: Int?, val notes: String?,
+    @ColumnInfo(defaultValue = "0") val usesGlobalLunch: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val lunchPlanApplied: Boolean = false,
 ) {
-    fun model() = ScheduledShift(id, LocalDate.ofEpochDay(date), LocalTime.ofSecondOfDay(scheduledStart.toLong()), LocalTime.ofSecondOfDay(scheduledEnd.toLong()), plannedLunchMinutes, notes)
+    fun model() = ScheduledShift(id, LocalDate.ofEpochDay(date), LocalTime.ofSecondOfDay(scheduledStart.toLong()), LocalTime.ofSecondOfDay(scheduledEnd.toLong()), plannedLunchMinutes, notes, usesGlobalLunch, lunchPlanApplied)
 }
-fun ScheduledShift.entity() = ScheduledShiftEntity(id, date.toEpochDay(), scheduledStart.toSecondOfDay(), scheduledEnd.toSecondOfDay(), plannedLunchMinutes, notes)
+fun ScheduledShift.entity() = ScheduledShiftEntity(id, date.toEpochDay(), scheduledStart.toSecondOfDay(), scheduledEnd.toSecondOfDay(), plannedLunchMinutes, notes, usesGlobalLunch, lunchPlanApplied)
 @Entity(tableName = "work_sessions", foreignKeys = [ForeignKey(entity = ScheduledShiftEntity::class, parentColumns = ["id"], childColumns = ["scheduledShiftId"], onDelete = ForeignKey.SET_NULL)], indices = [Index("scheduledShiftId")])
 data class WorkSessionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0, val scheduledShiftId: Long?,
