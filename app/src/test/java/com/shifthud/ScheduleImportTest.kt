@@ -55,7 +55,7 @@ Displayed weekly net: 37 hours"""
     @Test fun wrongWeekStaysUnknownRatherThanShifting() { assertNull(extractSchedule("Saturday Oct 24 8 AM–5 PM 8h",week).rows.single().date) }
     @Test fun lunchDefaultIsClearlyDistinguished() {
         val c=extractSchedule("Saturday Oct 17 8 AM–5 PM",week,50).rows.single()
-        assertEquals(50,c.lunch);assertEquals(LunchSource.DEFAULT,c.lunchSource);assertEquals(Confidence.REVIEW_REQUIRED,c.confidence)
+        assertEquals(50,c.lunch);assertEquals(LunchSource.DEFAULT,c.lunchSource);assertEquals(Confidence.HIGH,c.confidence);assertNull(c.shift()!!.plannedLunchMinutes);assertNull(c.shift()!!.employerLunchMinutes)
     }
     @Test fun explicitLunchWinsAndDisagreementWarns() {
         val c=extractSchedule("Saturday Oct 17 8 AM–5 PM net 8h lunch 45 min",week).rows.single()

@@ -13,7 +13,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.shifthud.ShiftHudApplication
-import com.shifthud.domain.model.ScheduledShift
 import com.shifthud.domain.planner.*
 import com.shifthud.domain.pay.workWeekFor
 import com.shifthud.domain.weekly.WeeklyTargetSettings
@@ -21,63 +20,56 @@ import com.shifthud.ui.*
 import java.time.*
 import java.time.format.DateTimeFormatter
 
-private data class LunchReview(val shifts:List<ScheduledShift>,val minutes:Int,val replace:Boolean,val week:LocalDate,val summary:String)
 @Composable fun LunchPlanControl(vm:ShiftViewModel,busy:Boolean) {
     var open by remember { mutableStateOf(false) }
-    OutlinedButton(onClick={open=true},enabled=!busy) { Text("Adjust lunch plan") }
+    OutlinedButton(onClick={open=true},enabled=!busy) { Text("Edit Lunch Plan") }
     if(open) LunchPlanDialog(vm,busy) { open=false }
 }
 @Composable private fun LunchPlanDialog(vm:ShiftViewModel,busy:Boolean,close:()->Unit) {
     val context=LocalContext.current
     val app=context.applicationContext as ShiftHudApplication
-    val settings by app.preferences.plannerSettings.collectAsState(initial=null)
+    val settings by app.preferences.weeklyPlannerSettings.collectAsState(initial=null)
     val target by app.preferences.weeklyTargetSettings.collectAsState(initial=WeeklyTargetSettings())
     val shifts by app.repository.schedule.collectAsState(initial=null)
     val records by app.repository.sessions.collectAsState(initial=null)
     val data by vm.state.collectAsState()
-    val saved=settings
-    if(saved==null || shifts==null || records==null) return
-    var minutesText by remember { mutableStateOf(saved.plannedMinutes.toString()) }
-    var replace by remember { mutableStateOf(false) }
-    var review by remember { mutableStateOf<LunchReview?>(null) }
-    var result by remember { mutableStateOf<String?>(null) }
-    val minutes=minutesText.toIntOrNull()?.takeIf { it in saved.minimumMinutes..240 }
+    val saved=settings ?: return
+    if(shifts==null || records==null) return
     val zone=ZoneId.systemDefault()
-    val week=workWeekFor(data.now.atZone(zone).toLocalDate())
-    val candidates=lunchPlanCandidates(shifts!!,records!!,data.now,zone,replace)
+    val currentWeek=workWeekFor(data.now.atZone(zone).toLocalDate()).start
+    var weekText by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(currentWeek.toString()) }
+    val week=LocalDate.parse(weekText)
+    var minutesText by androidx.compose.runtime.saveable.rememberSaveable(weekText) { mutableStateOf(saved.weeklyMinutes(week).toString()) }
+    val minutes=minutesText.toIntOrNull()?.takeIf { it in maxOf(31,saved.minimumMinutes)..240 }
     val locale=LocalConfiguration.current.locales[0]
-    val fmt=DateTimeFormatter.ofPattern(if(android.text.format.DateFormat.is24HourFormat(context)) "EEEE · HH:mm:ss" else "EEEE · h:mm:ss a",locale)
-    val plan=minutes?.let { clockOutPlan(records!!,hypotheticalLunchPlan(shifts!!,candidates,it),target.target,saved,data.now,zone) }
-    val summary=plan?.let { "Projected weekly hours: ${it.projected.display()}\nProjected excess: ${it.excess.display()}\nRecommended final-day clock-out: ${it.clockOut?.atZone(zone)?.format(fmt) ?: if(it.reached) "Weekly target reached" else "Unavailable — review schedule"}" }.orEmpty()
+    val fmt=DateTimeFormatter.ofPattern(if(android.text.format.DateFormat.is24HourFormat(context)) "EEEE · HH:mm" else "EEEE · h:mm a",locale)
+    // A future week's preview starts at Saturday midnight; current week uses live punches.
+    val previewNow=maxOf(data.now,week.atStartOfDay(zone).toInstant())
+    val plan=minutes?.let { clockOutPlan(records!!,shifts!!,target.target,saved.withWeek(week,it),previewNow,zone,week) }
     Dialog(onDismissRequest={if(!busy)close()}) {
         Surface(shape=MaterialTheme.shapes.large) { Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-            Text("Weekly Hours Planner",style=MaterialTheme.typography.titleLarge)
-            OutlinedTextField(minutesText,{minutesText=it;result=null},label={Text("Default planned lunch duration")},suffix={Text("min")},singleLine=true,enabled=!busy,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number))
-            Text("Minimum ${saved.minimumMinutes} minutes · Maximum 240")
-            if(minutes==null) Text("Enter whole minutes within the permitted range.",color=MaterialTheme.colorScheme.error)
-            Text("Saved default: ${saved.plannedMinutes} minutes. New shifts inherit it; existing plans keep their saved values.",style=MaterialTheme.typography.bodySmall)
-            Text("HYPOTHETICAL PREVIEW · Not saved",style=MaterialTheme.typography.titleMedium)
-            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                Checkbox(replace,{replace=it;result=null},enabled=!busy)
-                Text("Replace individual overrides too")
+            Text("Weekly Lunch Plan",style=MaterialTheme.typography.titleLarge)
+            Text("Saturday–Friday: $week – ${week.plusDays(6)}")
+            Row {
+                TextButton(enabled=!busy,onClick={weekText=week.minusWeeks(1).toString()}) { Text("Previous week") }
+                TextButton(enabled=!busy,onClick={weekText=week.plusWeeks(1).toString()}) { Text("Next week") }
             }
-            Text(if(replace) "Confirmation will replace eligible individual overrides with the selected global plan." else "Individual overrides are preserved. Select replacement explicitly to include them.")
-            Text("Saturday–Friday: ${week.start} – ${week.endInclusive}\n${candidates.size} affected future, unworked shifts")
-            minutes?.let { Text("Selected lunch: $it minutes") }
-            if(plan!=null) { Text(summary);plan.issues.forEach { Text(it,style=MaterialTheme.typography.bodySmall) } }
-            Text("Uses saved schedules and actual punches. No active or worked shift is changed. Confirm schedule completeness and manager approval to leave early.",style=MaterialTheme.typography.bodySmall)
-            Button(enabled=!busy && minutes!=null,onClick={vm.planner(saved.copy(plannedMinutes=minutes!!))}) { Text("SAVE DEFAULT FOR NEW SHIFTS") }
-            OutlinedButton(enabled=!busy && minutes!=null && candidates.isNotEmpty(),onClick={review=LunchReview(candidates,minutes!!,replace,week.start,summary)}) { Text("Apply planned lunch to remaining shifts this week") }
-            result?.let { Text(it) }
-            TextButton(onClick=close,enabled=!busy) { Text("CLOSE") }
+            OutlinedTextField(minutesText,{minutesText=it},label={Text("Planned lunch minutes")},suffix={Text("min")},singleLine=true,enabled=!busy,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number))
+            Text("Minimum ${maxOf(31,saved.minimumMinutes)} minutes · Maximum 240")
+            if(minutes==null) Text("Enter whole minutes within the permitted range.",color=MaterialTheme.colorScheme.error)
+            Text("Saved plan: ${saved.weeklyMinutes(week)} minutes${if(week !in saved.weeklyLunches) " · Inherited default" else ""}")
+            Text("HYPOTHETICAL PREVIEW · Not saved",style=MaterialTheme.typography.titleMedium)
+            if(plan!=null) {
+                Text("Actual worked: ${plan.worked.display()}\nProjected remaining: ${plan.futurePaid.display()}\nProjected weekly total: ${plan.projected.display()}")
+                Text("Target: ${target.target.display()}\nRemaining paid time to target: ${plan.remaining.display()}")
+                if(!plan.shortfall.isZero) Text("Shortfall: ${plan.shortfall.display()} of additional paid work needed. Extra work is not assumed.")
+                if(!plan.excess.isZero) Text("Projected excess: ${plan.excess.display()}")
+                Text("Recommended final-day clock-out: ${plan.clockOut?.atZone(zone)?.format(fmt) ?: "Unavailable — review schedule"}")
+                plan.issues.forEach { Text(it,style=MaterialTheme.typography.bodySmall) }
+            }
+            Text("Applies to this week's projections. Legacy individual lunch values remain stored for reference. Employer schedules, actual punches and payroll stay unchanged. Confirm manager approval for early departure.",style=MaterialTheme.typography.bodySmall)
+            Button(enabled=!busy && minutes!=null,onClick={vm.weeklyLunch(week,minutes!!,close)}) { Text("SAVE WEEKLY PLAN") }
+            TextButton(onClick=close,enabled=!busy) { Text("CANCEL") }
         } }
     }
-    review?.let { proposed -> AlertDialog(onDismissRequest={if(!busy)review=null},title={Text("Apply lunch plan?")},text={
-        Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            Text("${proposed.minutes} minutes · ${proposed.shifts.size} shifts\nSaturday–Friday: ${proposed.week} – ${proposed.week.plusDays(6)}")
-            Text(proposed.summary)
-            Text(if(proposed.replace) "Existing individual overrides in these shifts will be replaced." else "Individual overrides will be preserved.")
-            Text("Only future, unworked shifts are updated. IDs, times, notes, actual punches and payroll remain unchanged. The saved global default is a separate setting.")
-        }
-    },confirmButton={TextButton(enabled=!busy,onClick={vm.applyLunch(proposed.shifts,proposed.minutes,proposed.replace,proposed.week) { review=null;result="Updated ${proposed.shifts.size} shift lunch plans." }}) { Text("CONFIRM APPLY") }},dismissButton={TextButton(enabled=!busy,onClick={review=null}) { Text("CANCEL") }}) }
 }

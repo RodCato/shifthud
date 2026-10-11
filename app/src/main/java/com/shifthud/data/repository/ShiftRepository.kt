@@ -34,7 +34,7 @@ class ShiftRepository(
 
     suspend fun save(shift: ScheduledShift) = changed { db.withTransaction {
         val settings=plannerSettings()
-        val saved=if(shift.plannedLunchMinutes==null) shift.copy(plannedLunchMinutes=settings.plannedMinutes,usesGlobalLunch=true) else shift
+        val saved=if(!settings.dynamicWeekly && shift.plannedLunchMinutes==null && dao.scheduleSnapshot().none { it.id==shift.id }) shift.copy(plannedLunchMinutes=settings.plannedMinutes,usesGlobalLunch=true) else shift
         dao.save(saved.entity())
     } }.also { withContext(NonCancellable) { onScheduleChanged() } }
     /** Confirmed screenshot choices only. Recheck the preview and commit the batch atomically. */
@@ -53,8 +53,11 @@ class ShiftRepository(
             choices.forEach { choice ->
                 val proposed=choice.shift
                 require(proposed.id==0L && proposed.date in week..week.plusDays(6)) { "Every selected date must be in the confirmed week." }
+                val span=java.time.Duration.between(proposed.start,proposed.end).toMinutes()
+                require(proposed.employerNetMinutes==null || proposed.employerNetMinutes<=span) { "Employer net hours exceed the shift span." }
+                require(proposed.employerLunchMinutes==null || proposed.employerLunchMinutes<span) { "Employer lunch must be shorter than the shift." }
                 val old=choice.replacing
-                require(proposed.plannedLunchMinutes != null && proposed.plannedLunchMinutes in minimum..240) { "Review lunch duration against the current employer minimum." }
+                require(proposed.plannedLunchMinutes == null || proposed.plannedLunchMinutes in minimum..240) { "Review lunch duration against the current employer minimum." }
                 if(old!=null) {
                     require(old in current && replaced.add(old.id)) { "Replacement changed or was selected twice." }
                     require(records.none { it.scheduledShiftId==old.id }) { "A worked or active schedule cannot be replaced by screenshot import." }

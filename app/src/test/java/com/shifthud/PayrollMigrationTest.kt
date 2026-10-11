@@ -53,7 +53,7 @@ class PayrollMigrationTest {
         var manualId=0L
         try {
             repeat(2) { pass ->
-                val db=Room.databaseBuilder(context,ShiftDatabase::class.java,name).addMigrations(MIGRATION_5_6, MIGRATION_6_7).build()
+                val db=Room.databaseBuilder(context,ShiftDatabase::class.java,name).addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8).build()
                 try {
                     columns.forEach { (table,fields) ->
                         db.openHelper.readableDatabase.query("SELECT ${fields.joinToString()} FROM $table ${if(table=="work_sessions") "WHERE id IN (10,11)" else ""} ORDER BY id").use { c ->
@@ -71,7 +71,7 @@ class PayrollMigrationTest {
                         assertNull(saved.grossCents);assertNull(saved.netCents);assertEquals(49610L,saved.deposits.single().cents)
                         db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use{assertFalse(it.moveToFirst())}
                     }
-                    assertEquals(7,db.openHelper.readableDatabase.version)
+                    assertEquals(8,db.openHelper.readableDatabase.version)
                 } finally {db.close()}
             }
         } finally {context.deleteDatabase(name)}

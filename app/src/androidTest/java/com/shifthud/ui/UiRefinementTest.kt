@@ -79,8 +79,8 @@ class UiRefinementTest {
     @Test fun offDutyExposesClockInAndPlanner() {
         ui.setContent { ShiftHudTheme { DashboardScreen(data(),vm(),false) } }
         ui.onNodeWithText("CLOCK IN — UNSCHEDULED").assertIsDisplayed()
-        ui.onNodeWithText("Adjust lunch plan").performScrollTo().performClick()
-        ui.onNodeWithText("Default planned lunch duration").assertExists()
+        ui.onNodeWithText("Edit Lunch Plan").performScrollTo().performClick()
+        ui.onNodeWithText("Planned lunch minutes").assertExists()
     }
     @Test fun scheduleExpansionEditAndDeleteConfirmation() {
         val today=LocalDate.now()
@@ -89,7 +89,8 @@ class UiRefinementTest {
         ui.onNodeWithText("Edit shift").assertDoesNotExist()
         ui.onNodeWithText("Lunch 60 min",substring=true).performScrollTo().performClick()
         ui.onNodeWithText("Edit shift").performScrollTo().performClick()
-        ui.onNodeWithText("Override lunch minutes (blank = default)").assertExists()
+        ui.onNodeWithText("Override lunch minutes (blank = default)").assertDoesNotExist()
+        ui.onNodeWithText("Note (optional)").assertExists()
         ui.onNodeWithText("Cancel").performClick()
         ui.onNodeWithText("Delete shift").performScrollTo().performClick()
         ui.onNodeWithText("Delete scheduled shift?").assertExists()

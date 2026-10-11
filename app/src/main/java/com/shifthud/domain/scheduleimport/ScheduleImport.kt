@@ -11,9 +11,18 @@ data class ScheduleCandidate(
     val lunch: Int?, val lunchSource: LunchSource, val netMinutes: Int? = null,
     val weekday: DayOfWeek? = null, val off: Boolean = false, val warnings: List<String> = emptyList(),
 ) {
-    val confidence: Confidence get() = if(date==null || (!off && (start==null || end==null || lunch==null))) Confidence.UNKNOWN else if(warnings.isNotEmpty() || (lunchSource==LunchSource.DEFAULT && !off)) Confidence.REVIEW_REQUIRED else Confidence.HIGH
-    fun shift(): ScheduledShift? = if(off || date==null || start==null || end==null || lunch==null || lunch !in 0..240) null else
-        ScheduledShift(date=date,scheduledStart=start,scheduledEnd=end,plannedLunchMinutes=lunch,usesGlobalLunch=lunchSource==LunchSource.DEFAULT,lunchPlanApplied=true)
+    val confidence: Confidence get() = if(date==null || (!off && (start==null || end==null))) Confidence.UNKNOWN else if(warnings.isNotEmpty()) Confidence.REVIEW_REQUIRED else Confidence.HIGH
+    /** Persist employer evidence separately; the weekly plan is never an OCR field. */
+    fun shift(): ScheduledShift? {
+        if(off || date==null || start==null || end==null) return null
+        val span=Duration.between(start,end).toMinutes().let { if(it<=0) it+1440 else it }
+        val employerLunch=lunch.takeUnless { lunchSource==LunchSource.DEFAULT }
+        if(netMinutes!=null && (netMinutes<0 || netMinutes>span)) return null
+        if(employerLunch!=null && (employerLunch<0 || employerLunch>=span)) return null
+        return ScheduledShift(date=date, scheduledStart=start, scheduledEnd=end,
+            employerNetMinutes=netMinutes, employerLunchMinutes=employerLunch)
+    }
+
 }
 data class ScheduleExtraction(val week: LocalDate?, val requiresWeekConfirmation: Boolean, val rows: List<ScheduleCandidate>, val weeklyNetMinutes: Int?, val warnings: List<String>)
 private val monthNames=listOf("jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec")
@@ -119,7 +128,7 @@ fun extractSchedule(text:String, confirmedWeek:LocalDate?=null, defaultLunch:Int
         val lunch=explicit?:if(net!=null)inferredLunch else defaultLunch
         if(lunch==null || lunch !in 0..240)issues+="Lunch could not be inferred safely; review paid hours and lunch."
         if(explicit!=null && inferredLunch!=null && explicit!=inferredLunch)issues+="Explicit lunch and net hours disagree."
-        if(source==LunchSource.DEFAULT && !off)issues+="Saved default proposal; employer lunch was not shown."
+
         ScheduleCandidate(raw,date,start,end,lunch?.takeIf{it in 0..240},source,net,wd,off,issues)
     }
     val weekly=lines.firstOrNull{Regex("weekly|total",RegexOption.IGNORE_CASE).containsMatchIn(it)}?.let(::paidMinutes)

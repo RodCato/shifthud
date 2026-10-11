@@ -7,8 +7,9 @@ data class ScheduledShift(
     val id: Long = 0, val date: LocalDate, val scheduledStart: LocalTime,
     val scheduledEnd: LocalTime, val plannedLunchMinutes: Int? = null, val notes: String? = null,
     val usesGlobalLunch: Boolean = false, val lunchPlanApplied: Boolean = false,
+    val employerNetMinutes: Int? = null, val employerLunchMinutes: Int? = null,
 ) {
-    init { require(plannedLunchMinutes == null || plannedLunchMinutes in 0..1440) }
+    init { require(employerNetMinutes == null || employerNetMinutes in 0..1440); require(employerLunchMinutes == null || employerLunchMinutes in 0..1440); require(plannedLunchMinutes == null || plannedLunchMinutes in 0..1440) }
     val start: LocalDateTime get() = date.atTime(scheduledStart)
     val end: LocalDateTime get() = (if (scheduledEnd <= scheduledStart) date.plusDays(1) else date).atTime(scheduledEnd)
     fun duration(zone: ZoneId): Duration = Duration.between(start.atZone(zone), end.atZone(zone))
