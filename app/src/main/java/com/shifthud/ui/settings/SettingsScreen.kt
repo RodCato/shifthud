@@ -20,7 +20,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.shifthud.ui.*
 
-@Composable fun SettingsScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean, openHistoricalImport: () -> Unit = {}) {
+@Composable fun SettingsScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean, openHistoricalImport: () -> Unit = {}, openPaychecks: () -> Unit = {}, openQuickFind: () -> Unit = {}) {
     val context = LocalContext.current
     val notifications = (context.applicationContext as ShiftHudApplication).notifications
     var reminderStatus by remember { mutableStateOf(notifications.reminderStatus()) }
@@ -33,15 +33,33 @@ import com.shifthud.ui.*
     val snoozeMinutes by (context.applicationContext as ShiftHudApplication).preferences.snoozeMinutes.collectAsState(initial = 10)
     var input by rememberSaveable(data.threshold) { mutableStateOf(data.threshold.toString()) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Settings", style = MaterialTheme.typography.headlineMedium)
-        com.shifthud.backup.BackupSettingsSection()
-        OutlinedButton(onClick=openHistoricalImport) { Text("Historical Data Import") }
-        UpcomingSettingsSection()
-        NotificationTestCenterSection()
-        PayRateSettings(data, vm, busy)
-        WeeklyTargetSettingsSection(vm, data.loaded && !busy)
-        ShiftEndSettingsSection(vm, data.loaded && !busy)
+    var query by rememberSaveable { mutableStateOf("") }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        Text("Settings",style=MaterialTheme.typography.headlineMedium)
+        OutlinedTextField(query,{query=it},label={Text("Search settings")},singleLine=true,modifier=Modifier.fillMaxWidth(),
+            trailingIcon={if(query.isNotEmpty())TextButton(onClick={query=""}){Text("Clear")}})
+        val matches=SETTINGS_CATEGORIES.map { it to it.matchingEntries(query) }.filter { it.second.isNotEmpty() }
+        if(matches.isEmpty())Text("No matching settings. Try lunch, pay, sound or backup.")
+        matches.forEach { (category,entries) ->
+            key(category.title) {
+                com.shifthud.ui.components.ExpandableSection(category.title,category.subtitle,forceOpen=query.isNotBlank()) {
+                    entries.forEach { entry -> key(entry.id) { when(entry.id) {
+                        "backup" -> com.shifthud.backup.BackupSettingsSection()
+                        "history" -> OutlinedButton(onClick=openHistoricalImport) { Text("Historical Data Import") }
+                        "upcoming" -> UpcomingSettingsSection()
+                        "tests" -> NotificationTestCenterSection()
+                        "rates" -> PayRateSettings(data,vm,busy)
+                        "weekly" -> WeeklyTargetSettingsSection(vm,data.loaded && !busy)
+                        "planner" -> PlannerSettingsSection(vm,data.loaded && !busy)
+                        "end" -> ShiftEndSettingsSection(vm,data.loaded && !busy)
+                        "paychecks" -> OutlinedButton(onClick=openPaychecks) { Text("Paychecks & screenshot import") }
+                        "quick" -> { Text("Manage items, favorites and aisle mappings in Quick Find. There are no separate Quick Find preferences.");OutlinedButton(onClick=openQuickFind){Text("OPEN QUICK FIND")} }
+                        "about" -> {
+                            Text("ShiftHUD ${context.packageManager.getPackageInfo(context.packageName,0).versionName}")
+                            Text("Personal estimates only. Employer timecards and payroll remain authoritative. Not an official Publix app.")
+                            Text("Notification diagnostics and test alerts are in Notifications & Garmin. Android controls permissions, sounds and Do Not Disturb.")
+                        }
+                        "threshold" -> {
         Text("Lunch threshold counts active work time and pauses during lunch. This is your personal reminder preference.")
         OutlinedTextField(input, { input = it; message = null }, label = { Text("Lunch threshold (minutes)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         Button(enabled = data.loaded && !busy, onClick = {
@@ -50,19 +68,8 @@ import com.shifthud.ui.*
             else vm.threshold(minutes) { message = "Saved" }
         }) { Text("Save") }
         message?.let { Text(it) }
-        Text("Early lunch warnings", style = MaterialTheme.typography.titleLarge)
-        Text("A separate Lunch time alert appears at your threshold, even when early warnings are disabled.")
-        Text("Reminders use active work time. Offsets at or above your threshold are skipped. 5m and 1m are useful for short shifts or testing.")
-        Text(WarningSettings(data.threshold, data.warningOffsets).boundarySummary())
-        Text("Save the threshold and choose warnings before clock-in. During a shift, newly enabled or changed boundaries already passed are skipped.")
-        WARNING_CHOICES.forEach { offset ->
-            Row(modifier = Modifier.fillMaxWidth().toggleable(value = offset in data.warningOffsets,
-                enabled = data.loaded, role = Role.Checkbox, onValueChange = { vm.warning(offset, it) }),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Checkbox(checked = offset in data.warningOffsets, enabled = data.loaded, onCheckedChange = null)
-                Text("$offset ${if (offset == 1) "minute" else "minutes"} before")
-            }
-        }
+                        }
+                        "auto" -> {
         Text("Automatic lunch end", style = MaterialTheme.typography.titleLarge)
         Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text("Automatically end lunch", Modifier.weight(1f))
@@ -79,6 +86,23 @@ import com.shifthud.ui.*
                 Text(if (minutes == 2) "2 minutes (debug test)" else "$minutes minutes")
             }
         }
+                        }
+                        "warnings" -> {
+        Text("Early lunch warnings", style = MaterialTheme.typography.titleLarge)
+        Text("A separate Lunch time alert appears at your threshold, even when early warnings are disabled.")
+        Text("Reminders use active work time. Offsets at or above your threshold are skipped. 5m and 1m are useful for short shifts or testing.")
+        Text(WarningSettings(data.threshold, data.warningOffsets).boundarySummary())
+        Text("Save the threshold and choose warnings before clock-in. During a shift, newly enabled or changed boundaries already passed are skipped.")
+        WARNING_CHOICES.forEach { offset ->
+            Row(modifier = Modifier.fillMaxWidth().toggleable(value = offset in data.warningOffsets,
+                enabled = data.loaded, role = Role.Checkbox, onValueChange = { vm.warning(offset, it) }),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Checkbox(checked = offset in data.warningOffsets, enabled = data.loaded, onCheckedChange = null)
+                Text("$offset ${if (offset == 1) "minute" else "minutes"} before")
+            }
+        }
+                        }
+                        "snooze" -> {
         Text("Lunch snooze duration", style = MaterialTheme.typography.titleLarge)
         Text("Applies to future snooze actions. An existing snooze target stays unchanged.")
         com.shifthud.notification.SNOOZE_CHOICES.forEach { minutes ->
@@ -90,6 +114,8 @@ import com.shifthud.ui.*
                 Text("$minutes minutes")
             }
         }
+                        }
+                        "channel" -> {
         Text("Lunch Reminder Status", style = MaterialTheme.typography.titleLarge)
         Text(reminderStatus.description)
         reminderStatus.advice?.let { Text(it) }
@@ -101,5 +127,10 @@ import com.shifthud.ui.*
                 context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
             }
         }) { Text("OPEN NOTIFICATION SETTINGS") }
+                        }
+                    } } }
+                }
+            }
+        }
     }
 }

@@ -678,3 +678,68 @@ Branch dependency: PRs #8, #9 and #10 are merged, but #9/#10 merged into the pay
 API 37 emulator acceptance used isolated source and fresh-install destination datasets, offline. Real SAF export and confirmed UI restore preserved all seven tables, ID sequences, supported preferences, 2,000 Quick Find items, and the exact payroll comparisons above. Restart, repeated restores, wrong-password and tampered-file rejection passed. An actual force-stop with the recovery journal present recovered the original destination dataset. A separate process kill after the database durability checkpoint recovered destination-only changes across Room, both DataStores and SharedPreferences. Unit tests also cover failures/process death before and after the commit marker. A 320dp-wide UI inspection found readable, unclipped controls. Original emulator app-data files were restored and byte-verified after testing.
 
 The instrumentation class `BackupDeviceAcceptanceTest` defaults to read-only checks. Its explicit `phase` arguments (`seed`, `restore_file`, `verify`, `reject`, `mark_recovery`, `interrupt_after_checkpoint`, `verify_recovery`) are for disposable emulator installations only; the interrupt phase intentionally kills the process. Physical-device hardware power loss and manufacturer-specific document providers were not tested; use the physical acceptance checklist before relying on a provider for backups.
+
+### MVP-005D · Smart clock-out planning
+
+Dashboard’s Weekly Hours card combines exact recorded paid time with the saved Saturday–Friday schedule. Settings → Clock-out planning uses the existing weekly target (default 40 hours), an independent planned lunch (60 minutes), a configurable minimum (30 minutes by default; confirm employer policy), and one of three strategies:
+
+- Full lunches: saved shift lunch or the planned default, bounded by the minimum.
+- Shorter lunches: the minimum on earlier scheduled days, the planned duration on the final scheduled day.
+- Custom: date-specific minutes for each shift starting that day; otherwise the saved shift lunch or planned default. No required lunch is silently skipped.
+
+These are estimates only. Auto-lunch timers, lunch reminders, schedules, payroll and actual punches are unchanged. Manager approval is required before leaving early. The employer timecard remains authoritative.
+
+#### Calculation and uncertainty
+
+Workweeks use the existing clock-in-date attribution, including overnight sessions. Actual paid intervals exclude lunch and are unioned so duplicate IDs or overlapping records cannot count twice. Completed punches replace linked schedules. Remaining scheduled time subtracts the assumed unpaid lunch; a completed lunch subtracts nothing further. During lunch, the estimate uses the persisted automatic end target when available, otherwise the planned lunch end; paid work remains paused. A still-open lunch beyond that estimate withholds the recommendation until its end is known.
+
+The final shift’s paid budget equals target minus actual paid work minus earlier remaining scheduled paid work. A feasible budget produces its start (or now for an active final shift) plus remaining unpaid lunch plus that exact paid budget. Durations never pass through rounded display minutes. Changes to punches, schedules, target or planning settings recalculate the result through existing flows/ticks. Multiple shifts preserve gaps; overnight ends use the following date and actual zone offsets.
+
+Missed/unlinked punches, ambiguous overlapping schedules, unknown unscheduled future work, an earlier-than-final target crossing, and a projected shortfall withhold an exact recommendation and explain why. Overlapping schedule time is counted once for the qualified projection. No extra work beyond the schedule is invented. Saved schedules cannot prove a week is complete: the card always asks the user to confirm completeness. Once actual paid work reaches the target, no further work time is recommended.
+
+#### Planner notifications
+
+Optional 60/30/15-minute wall-clock leads and target-reached alerts default off. They use the existing `weekly_hours_reminders` channel, standard Android notifications and app-opening taps; ID 4107 is distinct from production shift/lunch/weekly IDs. Leads require an active final scheduled workday and a supported estimate; an actual target-reached alert can also apply to an unscheduled shift. The existing service refresh loop schedules the next boundary; no new service, alarm or Garmin SDK is introduced. Android/Doze may delay delivery and Garmin forwarding is not guaranteed.
+
+Delivery receipts are persisted by week/target/boundary. Failed posting remains retryable; setup/settings changes/corrected punches baseline already-passed thresholds. Estimate changes do not replay a delivered boundary. Recent matching weekly alerts and coincident scheduled-end alerts are coalesced instead of making two sounds. Existing weekly paid-time warnings remain independently configurable; planner leads account for future lunch in the estimated wall-clock departure.
+
+The new `clockout_planner` preference is included and validated in encrypted backups. `planner_delivery` is runtime-only (included in the private rollback snapshot, excluded from portable backups). No Room schema change. Older backups without planner preferences restore the defaults; older app versions cannot import newer backups containing unknown preference keys.
+
+#### Reconciliation presentation
+
+Hours differences use signed seconds (displayed to 0.001 second), with exact decimal hours retained in details. Net/deposit balance is shown independently of work differences. “Minor” is a disclosed presentation band of at most 60 seconds and $1 gross; it does not alter the existing zero-difference reconciliation rule, stored facts, or rounding tolerances.
+
+#### Physical acceptance
+
+1. Save your complete Saturday–Friday schedule and review the weekly target. Compare worked time with your authoritative timecard.
+2. Set the employer-approved minimum and test full, shorter, and custom lunches. Four completed 45-minute lunches on nine-hour shifts, followed by a final nine-hour shift with a 60-minute lunch, should move a 40-hour departure from 1 PM to noon.
+3. Check late/early punches, edits, additional or canceled shifts, multiple shifts, and overnight work. Missing/overlapping data must show the review explanation.
+4. Start lunch: paid time must pause. End lunch: the estimate must adjust. Reaching the target must not automatically clock out or change your schedule.
+5. Enable desired planner leads, allow the weekly channel, and verify phone notifications and Garmin forwarding. Check a coincident shift-end warning produces one alert. Android controls channel sound, vibration and DND.
+6. Restart and confirm settings persist. Export/restore a backup on a disposable installation and verify planning settings alongside payroll. Confirm the 24-second/$0.12 fixture remains an independent difference, not silently reconciled.
+
+Branch base: `mvp-005b-paycheck-reconciliation` at `dc756b6` (merged PR #11), which includes analytics, payroll, historical backfill, screenshot importing and encrypted backups; those later dependencies are not all in main yet.
+
+MVP-005D verification: full `build test lint assembleDebugAndroidTest` passed with 715 unit tests per variant (1,430 executions), zero failures, and lint zero errors/13 existing dependency warnings. API 37 instrumentation verified settings recreation and that planner evaluation does not mutate the supported dataset. Actual UI verification covered the 41-hour/noon shorter-lunch projection, changing to full lunches through Settings (40 hours/1 PM), restart persistence, and 320dp-wide Dashboard/settings. The original emulator database/preferences were restored and byte-verified. Real Garmin delivery and real-time physical-device alert timing remain physical acceptance checks.
+
+### MVP-005D.1 · Global lunch default and confirmed bulk plans
+
+Use **Adjust lunch plan** on Dashboard’s Weekly Hours card or in Settings → Weekly Hours Planner. Enter whole minutes from the existing employer-policy minimum through 240 (default 60). The hypothetical preview updates immediately from actual punches and saved schedules. It shows the affected count, Saturday–Friday range, projected paid hours/excess and a qualified final-day clock-out. This preview is not saved.
+
+**Save default for new shifts** only changes the preference. Each new shift captures that default as its own inherited plan. Previously inherited values stay unchanged. Legacy schedules with an implicit/null lunch are materialized at their previous effective value before a default change; no punch or payroll values change. Per-shift editing still supports individual overrides, which are labeled separately from global-default plans.
+
+**Apply planned lunch to remaining shifts this week** requires a second confirmation. It updates eligible schedules in one Room transaction, preserving IDs, dates, start/end times and notes. Only future shifts in the current Saturday–Friday week with no work association qualify. Completed/active associations and ambiguous unlinked work overlaps are protected. Individual overrides are excluded unless **Replace individual overrides too** is explicitly selected. Changing eligibility, schedule properties or workweek after preview rejects the operation and asks for a fresh review. Cancel does not write anything.
+
+An applied batch records the exact reviewed lunch length; older shorter/custom planning strategies do not replace that confirmed value. Ordinary newly inherited plans still support those strategies. Applied global plans remain eligible for later batches without being mistaken for individual overrides. The global default and applying a batch are separate actions.
+
+Room schema **7** adds only two schedule provenance flags (`usesGlobalLunch`, `lunchPlanApplied`), defaulting false for existing rows. Existing numeric lunches remain individual overrides. No WorkSession, payroll or other data migration is introduced. Backups include both flags; schema-6 backups remain supported through validated in-memory conversion before preview/restore. Schema-7 backups require this app version or later.
+
+Physical acceptance: enter 50 minutes and check the unsaved preview; cancel a batch and confirm Dashboard stays unchanged. Save the default and confirm old plans remain unchanged, then add a shift and check it inherits 50. Confirm a five-shift 4 AM–1 PM batch with 50-minute lunches shows 40h50m and Friday 12:10 PM at a 40-hour target. Add an individual override and check preservation, then explicitly choose replacement. Start a shift and verify it cannot be updated. Restart and compare the saved plans; export/restore a disposable backup to verify provenance.
+
+MVP-005D.1 verification: full build, all 727 unit tests per variant (1,454 executions), and lint passed (zero errors, 13 existing dependency warnings). Coverage includes inheritance/persistence, protected worked/active shifts, override preservation/replacement, stale confirmation rejection, week boundaries, exact projections, legacy-plan preservation, schema upgrades and schema-6 backup conversion. API 37 UI acceptance verified immediate 50-minute preview, canceled apply, default-only save without existing-plan changes, confirmed five-shift apply, restart persistence and a narrow 320dp dialog. Original emulator app data was restored and byte-verified afterward.
+
+### MVP-006A · UI organization
+
+Settings now opens with seven collapsed, searchable categories. Search exposes matching controls automatically; all existing save behavior remains. Dashboard puts shift actions before weekly planning, keeps weekly paid hours/gross visible, and groups records, analytics/paychecks and the calendar into expandable sections. Schedule uses compact expandable rows, current Saturday–Friday context and clear work/day-off labels. The four tabs, existing editors and confirmation flows remain.
+
+See [the screen inventory, scope and acceptance checklist](docs/UI-006A-audit.md). This is a UI-only change; it introduces no schema migration or changes to calculations, notifications, widgets or backup encryption.

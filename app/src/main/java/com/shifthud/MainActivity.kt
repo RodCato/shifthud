@@ -108,7 +108,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }) { padding ->
                     NavHost(nav, startDestination = "Dashboard", modifier = Modifier.padding(padding)) {
-                        composable("Dashboard") { DashboardScreen(data, vm, busy) { nav.navigate("Analytics") { launchSingleTop = true } } }
+                        composable("Dashboard") { DashboardScreen(data, vm, busy, openAnalytics={ nav.navigate("Analytics") { launchSingleTop = true } },openPaychecks={ nav.navigate("Paychecks/${com.shifthud.domain.pay.workWeekFor(java.time.LocalDate.now()).start}") }) }
                         composable("Analytics") {
                             val analytics: com.shifthud.ui.analytics.AnalyticsViewModel = viewModel(factory = object : ViewModelProvider.Factory {
                                 @Suppress("UNCHECKED_CAST")
@@ -141,7 +141,7 @@ class MainActivity : ComponentActivity() {
                             })
                             com.shifthud.ui.quickfind.QuickFindScreen(quickVm, quickFindFocusRequest)
                         }
-                        composable("Settings") { SettingsScreen(data, vm, busy) { nav.navigate("HistoricalImport") { launchSingleTop = true } } }
+                        composable("Settings") { SettingsScreen(data, vm, busy, openHistoricalImport={ nav.navigate("HistoricalImport") { launchSingleTop = true } },openPaychecks={ nav.navigate("Paychecks/${com.shifthud.domain.pay.workWeekFor(java.time.LocalDate.now()).start}") },openQuickFind={nav.selectTab("Quick Find")}) }
                         composable("HistoricalImport") {
                             val importer: com.shifthud.ui.importing.HistoricalImportViewModel = viewModel(factory = object : ViewModelProvider.Factory {
                                 @Suppress("UNCHECKED_CAST")

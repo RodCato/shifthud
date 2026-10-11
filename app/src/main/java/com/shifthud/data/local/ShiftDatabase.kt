@@ -3,7 +3,7 @@ import androidx.room.*
 import com.shifthud.data.local.dao.ShiftDao
 import com.shifthud.data.local.entity.*
 
-@Database(entities = [ScheduledShiftEntity::class, WorkSessionEntity::class, QuickFindItemEntity::class, AisleGuideEntity::class, PaycheckEntity::class, PayrollLineEntity::class, PayrollDepositEntity::class], version = 6, exportSchema = true)
+@Database(entities = [ScheduledShiftEntity::class, WorkSessionEntity::class, QuickFindItemEntity::class, AisleGuideEntity::class, PaycheckEntity::class, PayrollLineEntity::class, PayrollDepositEntity::class], version = 7, exportSchema = true)
 abstract class ShiftDatabase : RoomDatabase() { abstract fun shifts(): ShiftDao
     abstract fun payroll(): com.shifthud.data.local.dao.PayrollDao
     abstract fun aisleGuide(): com.shifthud.data.local.dao.AisleGuideDao
@@ -48,5 +48,13 @@ val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
         db.execSQL("CREATE INDEX IF NOT EXISTS index_payroll_lines_paycheckId ON payroll_lines (paycheckId)")
         db.execSQL("CREATE TABLE IF NOT EXISTS payroll_deposits (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, paycheckId INTEGER NOT NULL, date INTEGER, cents INTEGER, FOREIGN KEY(paycheckId) REFERENCES paychecks(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
         db.execSQL("CREATE INDEX IF NOT EXISTS index_payroll_deposits_paycheckId ON payroll_deposits (paycheckId)")
+    }
+}
+
+/** Preserve all existing values; explicit legacy lunches remain individual overrides. */
+val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE scheduled_shifts ADD COLUMN usesGlobalLunch INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE scheduled_shifts ADD COLUMN lunchPlanApplied INTEGER NOT NULL DEFAULT 0")
     }
 }

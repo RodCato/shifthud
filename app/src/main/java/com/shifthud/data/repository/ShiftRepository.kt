@@ -19,6 +19,7 @@ class ShiftRepository(
     private val onHistoricalChanged: suspend () -> Unit = {},
     private val autoLunchSettings: suspend () -> AutoLunchSettings = { AutoLunchSettings() },
     private val onScheduleChanged: suspend () -> Unit = {},
+    private val plannerSettings: suspend () -> com.shifthud.domain.planner.PlannerSettings = { com.shifthud.domain.planner.PlannerSettings() },
     private val onSessionDeleted: suspend (Long) -> Unit = {},
 ) {
     private val dao = db.shifts()
@@ -31,7 +32,34 @@ class ShiftRepository(
     val sessions = dao.observeSessions().map { rows -> rows.map { it.model() } }
     val latestSession = dao.observeLatest().map { it?.model() }
 
-    suspend fun save(shift: ScheduledShift) = changed { dao.save(shift.entity()) }.also { withContext(NonCancellable) { onScheduleChanged() } }
+    suspend fun save(shift: ScheduledShift) = changed { db.withTransaction {
+        val settings=plannerSettings()
+        val saved=if(shift.plannedLunchMinutes==null) shift.copy(plannedLunchMinutes=settings.plannedMinutes,usesGlobalLunch=true) else shift
+        dao.save(saved.entity())
+    } }.also { withContext(NonCancellable) { onScheduleChanged() } }
+    /** Freeze legacy implicit defaults before changing preferences; effective plans are unchanged. */
+    suspend fun preserveLegacyLunchPlans(settings: com.shifthud.domain.planner.PlannerSettings) = db.withTransaction {
+        val shifts=dao.scheduleSnapshot().map { it.model() }
+        shifts.filter { it.plannedLunchMinutes==null }.forEach { shift ->
+            val week=com.shifthud.domain.pay.workWeekFor(shift.date)
+            val last=shifts.filter { it.date in week }.maxOfOrNull { it.date }
+            dao.save(shift.copy(plannedLunchMinutes=settings.lunch(shift,last).toMinutes().toInt(),usesGlobalLunch=true,lunchPlanApplied=true).entity())
+        }
+    }
+    suspend fun applyLunchPlan(expected: List<ScheduledShift>, minutes: Int, replaceOverrides: Boolean,
+                               weekStart: LocalDate, zone: ZoneId) = changed {
+        db.withTransaction {
+            val now=clock.instant()
+            require(com.shifthud.domain.pay.workWeekFor(now.atZone(zone).toLocalDate()).start==weekStart) { "The workweek changed. Review a new preview." }
+            require(minutes in plannerSettings().minimumMinutes..240) { "Lunch is below the current minimum or above 240 minutes." }
+            val all=dao.scheduleSnapshot().map { it.model() }
+            val records=dao.allSessions().map { it.model() }
+            val current=com.shifthud.domain.planner.lunchPlanCandidates(all,records,now,zone,replaceOverrides)
+            require(current==expected) { "Schedules or work records changed. Review a new preview before applying." }
+            current.forEach { dao.save(it.copy(plannedLunchMinutes=minutes,usesGlobalLunch=true,lunchPlanApplied=true).entity()) }
+        }
+        withContext(NonCancellable) { onScheduleChanged() }
+    }
     suspend fun delete(id: Long) = changed { dao.delete(id) }.also { withContext(NonCancellable) { onScheduleChanged() } }
 
     suspend fun weeklySessions(now: Instant, zone: ZoneId): List<WorkSession> {

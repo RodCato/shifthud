@@ -152,6 +152,13 @@ class ShiftNotifications(private val context: Context) {
             .build()
     }
 
+    fun plannerReminder(boundary: Int, receipt: String): Notification {
+        val text = plannerWarningText(boundary)
+        return NotificationCompat.Builder(context,WEEKLY_CHANNEL).setSmallIcon(R.drawable.ic_stat_shift)
+            .setContentTitle(text.first).setContentText(text.second).setContentIntent(open()).setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER).setPriority(NotificationCompat.PRIORITY_HIGH)
+            .addExtras(android.os.Bundle().apply { putString(WARNING_RECEIPT,receipt) }).build()
+    }
     fun shiftEndStatus(): ReminderChannelStatus {
         val channel = manager.getNotificationChannel(END_CHANNEL)
         return ReminderChannelStatus(permissionAllowed() && manager.areNotificationsEnabled(),
@@ -194,7 +201,8 @@ class ShiftNotifications(private val context: Context) {
         val snapshot = app.repository.snapshot()
         val session = snapshot.session
         val now = Instant.now()
-        val weekly = app.preferences.deliverWeeklyWarning(app.repository.weeklySessions(now, ZoneId.systemDefault()), snapshot.schedule, now, ZoneId.systemDefault()) { event, progress ->
+        val weeklySessions = app.repository.weeklySessions(now, ZoneId.systemDefault())
+        val weekly = app.preferences.deliverWeeklyWarning(weeklySessions, snapshot.schedule, now, ZoneId.systemDefault()) { event, progress ->
             try {
                 if (!weeklyStatus().let { it.notificationsAllowed && it.channelEnabled }) false
                 else if (manager.activeNotifications.any { it.id == WEEKLY_ID && it.notification.extras.getString(WARNING_RECEIPT) == event.ledger.receipt(event.boundary!!) }) true
@@ -203,9 +211,26 @@ class ShiftNotifications(private val context: Context) {
         }
         nextWeeklyTarget = weekly.nextTarget
         if (weekly.cancel) manager.cancel(WEEKLY_ID)
+        val plannerNext = app.preferences.deliverPlanner(weeklySessions,snapshot.schedule,now,ZoneId.systemDefault()) { boundary,receipt,plan ->
+            try {
+                val existing = manager.activeNotifications
+                val already = existing.any { it.id == PLANNER_ID && it.notification.extras.getString(WARNING_RECEIPT) == receipt }
+                val sameWeekly = existing.any { it.id == WEEKLY_ID && kotlin.math.abs(now.toEpochMilli()-it.postTime)<30_000 && (boundary==0 || it.notification.extras.getString(WARNING_RECEIPT)?.endsWith(":$boundary")==true) }
+                val sameEnd = coincidentClockOut(plan.clockOut,scheduledReminderEnd(snapshot,ZoneId.systemDefault())) && existing.any { it.id==END_ID && kotlin.math.abs(now.toEpochMilli()-it.postTime)<30_000 }
+                if(already || sameWeekly || sameEnd) true
+                else if(!weeklyStatus().let { it.notificationsAllowed && it.channelEnabled }) false
+                else { manager.notify(PLANNER_ID,plannerReminder(boundary,receipt));true }
+            } catch (_: Exception) { false }
+        }
+        nextWeeklyTarget = listOfNotNull(nextWeeklyTarget,plannerNext).minOrNull()
+        val currentPlan = com.shifthud.domain.planner.clockOutPlan(weeklySessions,snapshot.schedule,
+            app.preferences.weeklyTargetSettings.first().target,app.preferences.plannerSettings.first(),now,ZoneId.systemDefault())
+        if(session?.clockOut != null || session == null || !app.preferences.weeklyTargetSettings.first().enabled || app.preferences.plannerSettings.first().alerts.isEmpty()) manager.cancel(PLANNER_ID)
         val endDecision = app.preferences.deliverShiftEnd(snapshot, now, ZoneId.systemDefault()) { event, minutes ->
             try {
-                if (!shiftEndAllowed()) false
+                if (manager.activeNotifications.any { it.id==PLANNER_ID && kotlin.math.abs(now.toEpochMilli()-it.postTime)<30_000 } &&
+                    coincidentClockOut(currentPlan.clockOut,event.end)) true
+                else if (!shiftEndAllowed()) false
                 else if (manager.activeNotifications.any { it.id == END_ID && it.notification.extras.getString(WARNING_RECEIPT) == event.receipt }) true
                 else { manager.notify(END_ID, shiftEndReminder(event, minutes, now)); true }
             } catch (_: Exception) { false }
@@ -290,6 +315,7 @@ class ShiftNotifications(private val context: Context) {
     }
 
     companion object {
+        const val PLANNER_ID = 4107
         const val WEEKLY_CHANNEL = "weekly_hours_reminders"
         const val WEEKLY_ID = 1004
         const val END_CHANNEL = "shift_end_reminders"

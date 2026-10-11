@@ -21,7 +21,7 @@ import java.time.format.TextStyle
 import java.util.Locale
 
 @Composable internal fun WorkCalendarSection(data: ShiftUiState, calendar: CalendarData, vm: ShiftViewModel, busy: Boolean,
-    week: SessionBreakdown, showWeek: Boolean, dismissWeek: () -> Unit, openRecord: (Long) -> Unit) {
+    week: SessionBreakdown, showWeek: Boolean, dismissWeek: () -> Unit, showCalendar: Boolean = true, openRecord: (Long) -> Unit) {
     val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     val context = androidx.compose.ui.platform.LocalContext.current
     val zone = ZoneId.systemDefault()
@@ -34,7 +34,7 @@ import java.util.Locale
         "MMM d, " + if (use24) "HH:mm" else "h:mm a", locale))
     fun gross(value: Long?) = value?.let { money(it, locale) } ?: "Unavailable"
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    if(showCalendar) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("WORK CALENDAR", style = MaterialTheme.typography.titleMedium)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = { vm.calendarMonth(calendar.month.minusMonths(1)) }, modifier = Modifier.semantics { contentDescription = "Previous month" }) { Text("‹") }

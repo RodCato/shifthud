@@ -26,10 +26,20 @@ data class BackupSnapshot(val manifest:JSONObject,val data:JSONObject) {
             require(envelope.namesSet()==setOf("manifest","payload"))
             val manifest=envelope.getJSONObject("manifest");val raw=envelope.getString("payload")
             require(manifest.getInt("format")==1 && manifest.getInt("payloadVersion")==1){"Unsupported backup version. Update ShiftHUD."}
-            require(manifest.getInt("databaseVersion")==6){"Unsupported database schema. No data was changed."}
+            require(manifest.getInt("databaseVersion") in 6..7){"Unsupported database schema. No data was changed."}
             require(manifest.getString("sha256")==digest(raw.toByteArray())){"Backup integrity check failed."}
             Instant.parse(manifest.getString("created"));ZoneId.of(manifest.getString("zone"))
-            return BackupSnapshot(manifest,JSONObject(raw))
+            val data=JSONObject(raw)
+            if(manifest.getInt("databaseVersion")==6) {
+                val rows=data.getJSONObject("tables").getJSONArray("scheduled_shifts")
+                for(i in 0 until rows.length()) {
+                    val row=rows.getJSONObject(i)
+                    require(!row.has("usesGlobalLunch") && !row.has("lunchPlanApplied")) { "Unexpected schema-6 field." }
+                    row.put("usesGlobalLunch",0).put("lunchPlanApplied",0)
+                }
+                manifest.put("sourceDatabaseVersion",6).put("databaseVersion",7)
+            }
+            return BackupSnapshot(manifest,data)
         }
     }
 }
@@ -65,7 +75,7 @@ internal suspend fun replaceDatabase(db:ShiftDatabase,tables:JSONObject,sequence
                     else->error("Unsupported column.")
                 }
             }.toTypedArray<Any?>()
-            listOf("isFavorite","deductionsComplete","lunchEndAutomatic","manuallyEntered").filter{row.has(it)}.forEach{require(row.getLong(it) in 0L..1L)}
+            listOf("lunchPlanApplied","usesGlobalLunch","isFavorite","deductionsComplete","lunchEndAutomatic","manuallyEntered").filter{row.has(it)}.forEach{require(row.getLong(it) in 0L..1L)}
             val id=row.getLong("id");require(id>0 && ids.add(id)){"Duplicate or invalid record identifier."}
             sql.execSQL("INSERT INTO $table (${columns.keys.joinToString()}) VALUES (${columns.keys.joinToString{"?"}})",args)
         }

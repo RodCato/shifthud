@@ -6,6 +6,7 @@ enum class ShiftState { NOT_STARTED, WORKING, ON_LUNCH, COMPLETE }
 data class ScheduledShift(
     val id: Long = 0, val date: LocalDate, val scheduledStart: LocalTime,
     val scheduledEnd: LocalTime, val plannedLunchMinutes: Int? = null, val notes: String? = null,
+    val usesGlobalLunch: Boolean = false, val lunchPlanApplied: Boolean = false,
 ) {
     init { require(plannedLunchMinutes == null || plannedLunchMinutes in 0..1440) }
     val start: LocalDateTime get() = date.atTime(scheduledStart)

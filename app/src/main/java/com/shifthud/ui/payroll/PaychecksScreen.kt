@@ -33,7 +33,7 @@ import java.time.format.*
     fun signed(cents:Long?)=cents?.let{(if(it>0)"+" else "")+money(it,locale)}?:"Not yet comparable"
     fun edit(value:Paycheck){editing=PayrollDraft.from(value).serialize()}
     LazyColumn(Modifier.fillMaxSize(),state=list,contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-        item { TextButton(onClick=back){Text("‹ WORK ANALYTICS")};Text("Paychecks",style=MaterialTheme.typography.headlineMedium);Text("Manual payroll comparison · Personal tracker, not official Publix payroll.",style=MaterialTheme.typography.bodySmall) }
+        item { TextButton(onClick=back){Text("‹ BACK")};Text("Paychecks",style=MaterialTheme.typography.headlineMedium);Text("Manual payroll comparison · Personal tracker, not official Publix payroll.",style=MaterialTheme.typography.bodySmall) }
         if(state.error!=null)item{Text(state.error!!,color=MaterialTheme.colorScheme.error);Button(onClick=vm::retry){Text("RETRY")}}
         else if(p==null || state.estimate==null)item{LinearProgressIndicator(Modifier.fillMaxWidth())}
         else {
@@ -59,6 +59,7 @@ import java.time.format.*
             if(r==null)item{Text("No paycheck saved for this period. Create a partial record now and fill in facts as they become available.")}
             else {
                 item { Section(r.status.label) {
+                    Text(reconciliationSummary(r))
                     Text("Pay date: ${p.payDate?.format(dates)?:"Not entered"}")
                     Text("Reconciled requires employer hours, gross, net, confirmed deductions, pay date, dated deposits, completed work, and zero differences. Optional earnings details, notes, and references are not required.",style=MaterialTheme.typography.bodySmall)
                 } }
@@ -72,7 +73,9 @@ import java.time.format.*
                     Text("Reported deductions: ${r.deductions?.let{money(it,locale)}?:"Incomplete — confirm all deductions"}")
                 } }
                 item { Section("Independent differences") {
-                    Text("Employer hours − ShiftHUD hours: ${r.hoursDifference?.let{(if(it.signum()>0)"+" else "")+it.stripTrailingZeros().toPlainString()+" h"}?:"Not yet comparable"}")
+                    Text("Employer hours − ShiftHUD hours: ${r.hoursDifference?.let(::hoursDifferenceLabel)?:"Not yet comparable"}")
+                    r.hoursDifference?.let { Text("Exact decimal-hours difference: ${it.toPlainString()} h",style=MaterialTheme.typography.bodySmall) }
+                    Text("Minor display label means at most 60 seconds and $1 gross; reconciliation still requires zero differences. Seconds shown to 0.001 s.",style=MaterialTheme.typography.bodySmall)
                     if(r.possibleHoursRounding)Text("This small difference may reflect employer hours rounded to two decimals. It is still shown, not silently reconciled.",style=MaterialTheme.typography.bodySmall)
                     Text("Actual gross − estimated base gross: ${signed(r.grossDifference)}")
                     Text("Actual gross: ${moneyOrMissing(p.grossCents)}\nLess confirmed deductions: ${r.deductions?.let{money(it,locale)}?:"Unknown"}\nCalculated net: ${r.calculatedNet?.let{money(it,locale)}?:"Not yet calculable"}\nActual net: ${moneyOrMissing(p.netCents)}")
@@ -93,6 +96,7 @@ import java.time.format.*
             items(state.history,key={it.paycheck.id}) { row ->
                 OutlinedCard(onClick={vm.select(row.paycheck.periodStart,row.paycheck.periodEnd);scope.launch{list.scrollToItem(0)}},modifier=Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     Text("${row.paycheck.periodStart.format(dates)} – ${row.paycheck.periodEnd.format(dates)}",style=MaterialTheme.typography.titleMedium)
+                    Text(reconciliationSummary(row))
                     Text("Pay date: ${row.paycheck.payDate?.format(dates)?:"Not entered"}")
                     Text("Gross: ${moneyOrMissing(row.paycheck.grossCents)} · Net: ${moneyOrMissing(row.paycheck.netCents)}")
                     Text("Deposits: ${row.deposits?.let{money(it,locale)}?:"Incomplete"}")
