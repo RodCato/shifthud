@@ -1,5 +1,6 @@
 package com.shifthud
 
+import androidx.compose.ui.unit.dp
 import android.os.Bundle
 import android.os.Build
 import android.Manifest
@@ -35,6 +36,7 @@ class MainActivity : ComponentActivity() {
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     override fun onStart() {
         super.onStart()
+        if((application as ShiftHudApplication).recoveryError!=null)return
         com.shifthud.notification.upcoming.UpcomingReminders.createChannel(this)
         lifecycleScope.launch { (application as ShiftHudApplication).upcoming.reschedule() }
         // Visible-activity recovery is permitted even when Android denied a background start.
@@ -67,6 +69,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ShiftHudTheme {
+                val recovery=(application as ShiftHudApplication).recoveryError
+                if(recovery!=null) { Text(recovery,modifier=Modifier.padding(32.dp)); return@ShiftHudTheme }
+                val restoring by (application as ShiftHudApplication).backups.busy.collectAsStateWithLifecycle()
+                if(restoring)AlertDialog(onDismissRequest={},title={Text("Restoring data")},text={Text("Please wait. Your previous dataset is retained until verification completes.")},confirmButton={})
                 if (explainNotifications) AlertDialog(
                     onDismissRequest = { explainNotifications = false },
                     title = { Text("Shift notifications") },

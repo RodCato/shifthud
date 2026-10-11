@@ -1,5 +1,6 @@
 package com.shifthud.data.preferences
 import android.content.Context
+import com.shifthud.backup.guardedEdit as edit
 import com.shifthud.notification.*
 import com.shifthud.domain.model.WorkSession
 import com.shifthud.domain.usecase.*
@@ -16,7 +17,7 @@ import kotlinx.coroutines.withContext
 private val Context.shiftPreferences by preferencesDataStore(name = "shift_preferences")
 class ShiftPreferences(context: Context, private val onChanged: suspend () -> Unit = {}) {
     val debugSettings = context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
-    private val store = context.shiftPreferences
+    internal val store = context.shiftPreferences
     private val lunchThreshold = intPreferencesKey("lunch_threshold_minutes")
     val lunchThresholdMinutes: Flow<Int> = store.data.catch { if (it is IOException) emit(emptyPreferences()) else throw it }.map { it[lunchThreshold] ?: 360 }
     suspend fun setLunchThreshold(minutes: Int) {

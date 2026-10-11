@@ -35,6 +35,7 @@ import com.shifthud.ui.*
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium)
+        com.shifthud.backup.BackupSettingsSection()
         OutlinedButton(onClick=openHistoricalImport) { Text("Historical Data Import") }
         UpcomingSettingsSection()
         NotificationTestCenterSection()

@@ -1,6 +1,6 @@
 package com.shifthud.data.repository
 
-import androidx.room.withTransaction
+import com.shifthud.backup.guardedTransaction as withTransaction
 import com.shifthud.data.local.ShiftDatabase
 import com.shifthud.data.local.entity.*
 import com.shifthud.domain.model.*
@@ -154,7 +154,7 @@ class ShiftRepository(
     }
 
     private suspend fun <T> changed(historical: Boolean = false, block: suspend () -> T): T {
-        val result = block()
+        val result = com.shifthud.backup.DataGate.with { block() }
         // Persistence is complete before requesting a redraw; navigation cannot cancel this handoff.
         withContext(NonCancellable) { if (historical) onHistoricalChanged() else onChanged() }
         return result

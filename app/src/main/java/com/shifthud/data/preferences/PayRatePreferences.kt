@@ -1,6 +1,7 @@
 package com.shifthud.data.preferences
 
 import android.content.Context
+import com.shifthud.backup.guardedEdit as edit
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
@@ -14,7 +15,7 @@ private val Context.payRateStore by preferencesDataStore(name = "pay_rates")
 
 // A small atomic date→rate history, separate from session data and reminder preferences.
 // Invalid/unreadable data is surfaced to the UI, never replaced with a misleading default rate.
-class PayRatePreferences(private val store: DataStore<Preferences>) {
+class PayRatePreferences(internal val store: DataStore<Preferences>) {
     constructor(context: Context) : this(context.payRateStore)
     private val key = stringPreferencesKey("history_v1")
     val rates = store.data.map { decode(it[key]) }

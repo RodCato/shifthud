@@ -17,7 +17,7 @@ import com.shifthud.ShiftHudApplication
 import com.shifthud.service.ActiveShiftService
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import com.shifthud.backup.guardedLock as withLock
 import java.time.*
 
 /** Called through the existing serialized WidgetRefresh path; owns no loop or work-time data. */

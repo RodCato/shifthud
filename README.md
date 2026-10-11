@@ -608,3 +608,73 @@ The supplied Publix OCR text is now an exact regression fixture. YTD ambiguity i
 Recognized fields have HIGH, REVIEW_REQUIRED, or UNKNOWN confidence. Explicit total hours are high-confidence; component-derived hours are visibly flagged for review; unresolved columns and missing values remain unknown. A concise review summary replaces the always-visible OCR dump. OCR text and confidence details are expandable. Closing/reopening the review retains saved form edits; choosing another image resets them. Calculated net still needs separate acceptance, and no import writes payroll before confirmation.
 
 Correction validation: full `./gradlew build test lint` passed with **667 tests per variant / 1,334 passing executions**, zero failures; lint **0 errors / 13 existing warnings**. The new regression fixture covers the actual supplied OCR text, scoped YTD ambiguity, automatic reported hours, gross-only totals, alternate/overtime values, edited summary validation, historical-rate comparison, and saved corrections. Pixel 9/API 37 offline Photo Picker + ML Kit testing verified automatic population, collapsed details, retained manual gross edits after closing/reopening review, a visible rate mismatch, and cancel leaving all Room rows and preference hashes unchanged.
+
+### Encrypted Backup & Restore (MVP-005C)
+
+Settings → **Data Management → Backup & Restore** creates a portable .shifthud file using Android Storage Access Framework. Enter and confirm a password of at least 12 characters, choose a destination, and wait for **written, closed, and verified** confirmation. The app rereads and byte-compares the complete encrypted file after closing it. A provider that cannot reopen the document cannot produce a verified-success result. Partial/failed files may remain at the chosen destination; discard them and retry elsewhere. A compatible document provider may sync ciphertext to its service; ShiftHUD itself has no Internet or broad-storage permission.
+
+**Passwords cannot be recovered.** They are never written to preferences, saved UI state, the backup, or logs. Password entry is deliberately cleared on configuration changes and completion. Keep the password separately from the file.
+
+#### Complete coverage inventory
+
+| Persistent source | Included portable data | Exclusions / treatment |
+|---|---|---|
+| Room work_sessions | Every column: stable ID, schedule link, millisecond clock/lunch/out timestamps, state, captured automatic-lunch minutes, automatic-end flag, correction revision, manual-entry flag | Active sessions block export and restore; no silent resumption, conversion, or deletion |
+| Room scheduled_shifts | Every column: ID, local date/start/end, lunch plan, notes | None |
+| Room paychecks | IDs, inclusive period/pay dates, exact decimal hours, gross/net cents, deduction completeness, notes/reference, revision | Independent employer facts remain independent |
+| Room payroll_lines | Stable child/parent IDs, original descriptions, kind, nullable signed cents | None |
+| Room payroll_deposits | Stable child/parent IDs, nullable date and signed cents | None |
+| Room quick_find_items | ID/name/normalized name, location, notes, aliases, favorite, created/updated/last-used timestamps, use count | Recent finds are derived from included fields |
+| Room aisle_guide | ID/location/normalized location, categories, creation/update times | None |
+| SQLite sequences | All seven tables' ID high-water marks | Room identity metadata is rebuilt, not imported |
+| shift_preferences DataStore | Lunch threshold/warning choices; auto-lunch enabled/duration; lunch snooze choice; weekly target enabled/minutes/warnings; shift-end enabled/lead/snooze choice | lunch_warning_delivery, lunch_attention, weekly_target_delivery, shift_end_delivery are runtime receipts/active targets, not portable settings |
+| pay_rates DataStore | Entire history_v1, including exact effective dates and integer rates | No rates inferred or rewritten |
+| upcoming_reminders SharedPreferences | enabled, minute, days_off | date/state/posted are receipts; rebuilt without historical posting |
+| Analytics / paycheck comparisons | Recomputed from sessions, rates, payroll and target settings | No independent cached totals |
+| Android notification channels | Source sound URI references only as encrypted diagnostic metadata | OS-owned importance/sounds/vibration/DND and permissions cannot be transferred; destination settings are respected |
+| Widgets | All authoritative schedule/session/favorite/aisle data included | Launcher placement, widget IDs, Glance mapping DataStore, WorkManager queues and service state are installation-local |
+| Other | No separate app-owned hourly-chime or custom-alarm configuration exists in this revision | Permission prompt history, OCR saved-state drafts/images, ML Kit/Firebase caches, temporary files, receipts, WorkManager DB and test artifacts excluded |
+
+The serializer covers exactly the seven Room tables and every column, rejecting unknown/missing fields. A coverage regression compares the inventory with Room's actual user tables. Unknown application preference keys block export rather than silently omitting future data. No Room migration: schema remains **6**.
+
+#### Container, encryption, and compatibility
+
+Format 1 has an authenticated 56-byte header: ASCII SHIFTHUD (8), big-endian format version (4), Argon2 version/memory-KiB/iterations/lanes (four 4-byte integers), random salt (16), random nonce (12). Remaining bytes are AES-256-GCM ciphertext with a 128-bit tag. The entire header is associated data. Format 1 accepts only its fixed parameters, preventing malicious files from requesting excessive KDF resources.
+
+Key derivation is **Argon2id v1.3, 64 MiB, 3 passes, 4 lanes, 256-bit key**, implemented by Bouncy Castle 1.86. Android/JCA AES-GCM uses a fresh 96-bit nonce and 128-bit salt per export. Parameters follow the memory-constrained recommendation in [RFC 9106](https://www.rfc-editor.org/rfc/rfc9106.html#section-4). No global crypto provider replacement or device-bound key is used. Temporary key bytes/password character arrays are cleared when possible; JVM-managed input strings cannot be guaranteed physically erased.
+
+The encrypted envelope contains a manifest and UTF-8 JSON payload. The manifest records format/payload version, app version, Room schema version, creation instant, source device time zone, entity/preference counts, diagnostic sound references, and SHA-256 of the serialized payload. GCM authenticates the entire envelope; the hash additionally detects accidental staging/journal corruption. Payload 1 preserves SQLite integer/text/null values, exact decimal-hour strings, relationships and sequences, plus typed preferences. It contains no password, unnecessary device identifier, or screenshots.
+
+Limits: **32 MiB per file and 100,000 rows per table**. Unsupported format, payload, schema, field, preference, ID, relationship, timestamp, or financial value blocks restore before live writes. Schema 6 is currently the only supported source schema; future versions require explicit compatibility. Local schedules and effective-date rates are preserved, not automatically converted to another work location. Existing Analytics grouping uses the destination device time zone: use the same work time zone when comparing results. The source zone is shown for review; restore does not change Android’s system time zone.
+
+#### Snapshot and crash recovery
+
+A reentrant coroutine data gate coordinates repository mutations, DataStore edits, reminder configuration/delivery, and runtime reconciliation. Room snapshot reads occur in a transaction that sees committed WAL data. Room, preferences, and ID sequences are captured while the same gate excludes writers. Encryption and file picking happen after releasing the gate and database transaction.
+
+Restore decrypts and validates every record in an isolated staging Room database. Preview shows source metadata, counts versus destination, and replacement warnings; it performs no live writes. **Replace Existing Data** is the sole mode and requires explicit confirmation. It rechecks active shifts under the replacement gate. Pending actions from the prior dataset are rejected, not applied to restored IDs.
+
+Before replacement, a complete original snapshot (including local runtime receipts for exact rollback) is written into the app-private, Android-backup-excluded recovery directory, fsynced, atomically renamed, and its directory fsynced. Room replacement is transactional; DataStores and reminder preferences follow. The result is reread and compared canonically, including sequences. Past reminder boundaries are baselined without posting. A FULL WAL checkpoint plus database/WAL/directory fsync makes Room durable before the cross-store commit (ordinary WAL NORMAL transactions alone need not survive power loss; see [SQLite synchronous guarantees](https://www.sqlite.org/pragma.html#pragma_synchronous)). Only then is a commit marker containing the verified dataset digest atomically written and synced. The original journal is deleted only after that durable commit; journal/marker cleanup is repeatable. UI interaction is blocked during replacement; widgets show a restoration placeholder.
+
+Failure restores the original snapshot and verifies it. Process death before commit leaves the journal: **Application startup recovers it before UI/services or deferred WorkManager initialization**. Without a commit marker, startup restores the original. With a durable commit marker, it verifies and retains the replacement, then finishes cleanup. Recovery is repeatable. If recovery cannot complete, writes and normal UI remain blocked. Force-stop/reopen to retry; never uninstall or clear data. Keep the backup and free device storage. The private original snapshot is retained while recovery is pending. Power loss before durable commit may roll back the attempted restore; after durable commit the verified replacement is authoritative.
+
+Widgets/reactive repositories refresh after commit; reminder work is rebuilt without expired historical alerts. No old active service is resumed. If scheduling fails after commit, UI reports data restore success and asks the user to reopen for runtime refresh.
+
+#### Physical acceptance checklist
+
+1. Install over the source app without clearing data. Finish the active shift and create a backup with a strong confirmed password.
+2. Choose Downloads or another provider supporting readback; wait for verified completion. Copy ciphertext to the destination.
+3. On a fresh installation choose Restore, enter the password, and review source time zone, counts and the replacement warning.
+4. Confirm replacement and compare Analytics/Paychecks/Quick Find/Settings. For the regression fixture, retain 35.39 hours, $566.24 gross, three taxes totaling $70.14, $496.10 net/deposit, October 6 deposit date and October 8 pay date. Recorded work stays 35h23m/$566.12, leaving independent 24-second/$0.12 differences.
+5. Restart and verify persistence. A second restore must have identical counts without duplicates.
+6. Review Android permissions/channels/sounds and reinstall widgets. Missing source sound URIs prompt reselection; destination channel settings are never overwritten. URI readability does not guarantee playback or future provider access.
+7. Use only disposable installations for incorrect passwords, corruption, storage failures and forced process stops. Failed restore must retain/recover the prior dataset.
+
+Branch dependency: PRs #8, #9 and #10 are merged, but #9/#10 merged into the payroll branch after #8 reached main. This feature starts from verified db68853 on mvp-005b-paycheck-reconciliation and targets that branch until its backfill/import commits reach main.
+
+#### MVP-005C verification
+
+`./gradlew build test lint assembleDebugAndroidTest` passed: 688 unit tests per build variant (1,376 executions), zero failures. Lint reports zero errors and 13 existing dependency warnings. `connectedDebugAndroidTest` passed its read-only encrypted round-trip test.
+
+API 37 emulator acceptance used isolated source and fresh-install destination datasets, offline. Real SAF export and confirmed UI restore preserved all seven tables, ID sequences, supported preferences, 2,000 Quick Find items, and the exact payroll comparisons above. Restart, repeated restores, wrong-password and tampered-file rejection passed. An actual force-stop with the recovery journal present recovered the original destination dataset. A separate process kill after the database durability checkpoint recovered destination-only changes across Room, both DataStores and SharedPreferences. Unit tests also cover failures/process death before and after the commit marker. A 320dp-wide UI inspection found readable, unclipped controls. Original emulator app-data files were restored and byte-verified after testing.
+
+The instrumentation class `BackupDeviceAcceptanceTest` defaults to read-only checks. Its explicit `phase` arguments (`seed`, `restore_file`, `verify`, `reject`, `mark_recovery`, `interrupt_after_checkpoint`, `verify_recovery`) are for disposable emulator installations only; the interrupt phase intentionally kills the process. Physical-device hardware power loss and manufacturer-specific document providers were not tested; use the physical acceptance checklist before relying on a provider for backups.
