@@ -15,6 +15,7 @@ import org.json.*
 class ScheduleImportViewModel(private val app:ShiftHudApplication,private val saved:SavedStateHandle):ViewModel() {
     val schedule=app.repository.schedule
     val planning=app.preferences.plannerSettings
+    val geometry=saved.getStateFlow("scheduleGeometry","")
     val raw=saved.getStateFlow("scheduleRaw","")
     val weekText=saved.getStateFlow("scheduleWeek","")
     val encoded=saved.getStateFlow("scheduleRows","")
@@ -29,9 +30,12 @@ class ScheduleImportViewModel(private val app:ShiftHudApplication,private val sa
         busy.value=true;message.value=null
         viewModelScope.launch {
             try {
-                val text=PaystubOcr(app).read(uri,::scheduleOcrRows);ensureActive()
+                val document=PaystubOcr(app).readDocument(uri);ensureActive()
+                val encodedGeometry=document.encodeGeometry()
+                val text=com.shifthud.ui.paystub.ocrRows(document.lines.map{it.bounds}).take(20000)
                 val defaults=planning.first()
-                val extraction=extractSchedule(text,defaultLunch=defaults.plannedMinutes)
+                val extraction=extractPassportSchedule(document,defaultLunch=defaults.plannedMinutes)
+                saved["scheduleGeometry"]=encodedGeometry
                 saved["scheduleRaw"]=text;saved["scheduleWeek"]=extraction.week?.toString()?:""
                 saved["scheduleWeekConfirmed"]=!extraction.requiresWeekConfirmation
                 setRows(extraction.rows.map{ReviewRow(it)})
@@ -45,7 +49,8 @@ class ScheduleImportViewModel(private val app:ShiftHudApplication,private val sa
     fun confirmWeek(date:LocalDate) {
         if(date.dayOfWeek!=DayOfWeek.SATURDAY){message.value="Choose the Saturday printed for this workweek.";return}
         viewModelScope.launch {
-            val extraction=extractSchedule(raw.value,date,planning.first().plannedMinutes)
+            val defaults=planning.first().plannedMinutes
+            val extraction=decodeScheduleGeometry(geometry.value)?.let{extractPassportSchedule(it,date,defaults)}?:extractSchedule(raw.value,date,defaults)
             saved["scheduleWeek"]=date.toString();saved["scheduleWeekConfirmed"]=true
             setRows(extraction.rows.map{ReviewRow(it)})
             message.value="Week confirmed. Recognized rows were refreshed for this week; review before importing."
@@ -71,7 +76,7 @@ class ScheduleImportViewModel(private val app:ShiftHudApplication,private val sa
                 val result=app.repository.importSchedule(choices,snapshot,week)
                 val conflicts=rows.count{!it.selected && classify(it.candidate.shift(),snapshot).kind in listOf(ImportKind.CONFLICT,ImportKind.POSSIBLE_UPDATE)}
                 message.value="Imported ${result.imported} · Updated ${result.updated} · Skipped duplicates ${result.duplicates} · Skipped conflicts $conflicts · Failed 0" + if(result.refreshDeferred) " · Reminder refresh deferred; reopen the app to retry." else ""
-                setRows(emptyList());saved["scheduleRaw"]="";expected=null;done()
+                setRows(emptyList());saved["scheduleRaw"]="";saved["scheduleGeometry"]="";expected=null;done()
             }catch(e:CancellationException){throw e}
             catch(e:Exception){message.value="Nothing imported. ${e.message}";expected=null}
             finally{busy.value=false}

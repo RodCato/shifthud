@@ -11,7 +11,7 @@ data class ScheduleCandidate(
     val lunch: Int?, val lunchSource: LunchSource, val netMinutes: Int? = null,
     val weekday: DayOfWeek? = null, val off: Boolean = false, val warnings: List<String> = emptyList(),
 ) {
-    val confidence: Confidence get() = if(date==null || (!off && (start==null || end==null || lunch==null))) Confidence.UNKNOWN else if(warnings.isNotEmpty() || lunchSource==LunchSource.DEFAULT) Confidence.REVIEW_REQUIRED else Confidence.HIGH
+    val confidence: Confidence get() = if(date==null || (!off && (start==null || end==null || lunch==null))) Confidence.UNKNOWN else if(warnings.isNotEmpty() || (lunchSource==LunchSource.DEFAULT && !off)) Confidence.REVIEW_REQUIRED else Confidence.HIGH
     fun shift(): ScheduledShift? = if(off || date==null || start==null || end==null || lunch==null || lunch !in 0..240) null else
         ScheduledShift(date=date,scheduledStart=start,scheduledEnd=end,plannedLunchMinutes=lunch,usesGlobalLunch=lunchSource==LunchSource.DEFAULT,lunchPlanApplied=true)
 }
@@ -47,7 +47,7 @@ fun parseScheduleTime(value:String):LocalTime? = runCatching {
 fun decimalHoursMinutes(text:String):Int? = runCatching { BigDecimal(text).multiply(BigDecimal(60)).intValueExact().also{require(it>=0)} }.getOrNull()
 private fun paidMinutes(text:String):Int? {
     val explicit=Regex("(?:net|paid)(?:\\s+hours)?\\s*:?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:h|hrs?|hours?)?",RegexOption.IGNORE_CASE).find(text)
-    val trailing=Regex("(?<![\\d:])(\\d+(?:\\.\\d+)?)\\s*(?:h|hrs?|hours?)\\b",RegexOption.IGNORE_CASE).find(text)
+    val trailing=Regex("(?<![\\d:])(\\d+(?:\\.\\d+)?)\\s*(?:(?:net|paid)\\s+)?(?:h|hrs?|hours?)\\b",RegexOption.IGNORE_CASE).find(text)
     val match=explicit?:trailing?:return null
     val base=decimalHoursMinutes(match.groupValues[1])?:return null
     val minutes=Regex("^\\s*(?:h|hrs?|hours?)?\\s*(\\d{1,2})\\s*(?:m|min|minutes?)\\b",RegexOption.IGNORE_CASE)
@@ -59,7 +59,7 @@ fun extractSchedule(text:String, confirmedWeek:LocalDate?=null, defaultLunch:Int
     require(confirmedWeek==null || confirmedWeek.dayOfWeek==DayOfWeek.SATURDAY)
     val lines=text.take(20000).lines().map{it.trim()}.filter{it.isNotEmpty()}
     val headers=lines.filter { weekdayRegex.find(it)==null && timeRange.find(it)==null }
-    val header= headers.firstOrNull { parts(it).isNotEmpty() && Regex("[-–—]|week",RegexOption.IGNORE_CASE).containsMatchIn(it) }
+    val header= headers.firstOrNull { parts(it).isNotEmpty() && (Regex("[-–—]|week",RegexOption.IGNORE_CASE).containsMatchIn(it) || Regex("\\d{1,2}/\\d{1,2}/\\d{4}").matches(it)) }
     val hp=header?.let(::parts).orEmpty()
     val year=header?.let{Regex("\\b20\\d{2}\\b").findAll(it).lastOrNull()?.value?.toInt()}
     val inferred=hp.firstOrNull()?.let { p -> runCatching {
@@ -76,7 +76,7 @@ fun extractSchedule(text:String, confirmedWeek:LocalDate?=null, defaultLunch:Int
             inferred.plusDays(6).also{require(it.dayOfMonth==day)}
         }
     }.getOrNull()
-    val completeRange=inferred!=null && printedEnd==inferred.plusDays(6)
+    val completeRange=inferred!=null && (printedEnd==inferred.plusDays(6) || Regex("\\d{1,2}/\\d{1,2}/\\d{4}").matches(header.orEmpty()))
     val week=confirmedWeek?:inferred
     val warnings=mutableListOf<String>()
     if(confirmedWeek==null && !completeRange)warnings+="Confirm the screenshot's Saturday and year. Do not assume the current week."

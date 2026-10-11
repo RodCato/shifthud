@@ -23,6 +23,7 @@ import java.time.format.DateTimeFormatter
 
 @Composable fun ScheduleImportScreen(vm:ScheduleImportViewModel,back:()->Unit) {
     val raw by vm.raw.collectAsStateWithLifecycle()
+    val geometry by vm.geometry.collectAsStateWithLifecycle()
     val encoded by vm.encoded.collectAsStateWithLifecycle()
     val weekText by vm.weekText.collectAsStateWithLifecycle()
     val confirmed by vm.confirmed.collectAsStateWithLifecycle()
@@ -32,7 +33,7 @@ import java.time.format.DateTimeFormatter
     val message by vm.message.collectAsStateWithLifecycle()
     val rows=remember(encoded){reviewRows(encoded)}
     val week=runCatching{LocalDate.parse(weekText)}.getOrNull()
-    val extraction=remember(raw,week){extractSchedule(raw,week)}
+    val extraction=remember(raw,geometry,week){decodeScheduleGeometry(geometry)?.let{extractPassportSchedule(it,week)}?:extractSchedule(raw,week)}
     var weekPicker by rememberSaveable{mutableStateOf(false)}
     var confirmation by remember{mutableStateOf<List<ReviewRow>?>(null)}
     val picker=rememberLauncherForActivityResult(PickVisualMedia()){uri->if(uri!=null)vm.read(uri)}
@@ -61,6 +62,7 @@ import java.time.format.DateTimeFormatter
             Text("Based on recognized review rows; unknown rows are excluded. Selected rows: ${selected.size}. Replacements retain existing lunch plans, which may change the saved total.",style=MaterialTheme.typography.bodySmall)
             extraction.weeklyNetMinutes?.let { net->
                 Text("Screenshot weekly net: ${net/60}h ${net%60}m")
+                if(net.toLong()==total)Text("Recognized hours match the total. This does not prove all days are visible.",style=MaterialTheme.typography.bodySmall)
                 if(net.toLong()!=total)Text("Mismatch: review rows differ from the screenshot total by ${kotlin.math.abs(net-total)} minutes. Cropped days may be missing.",color=MaterialTheme.colorScheme.error)
             }
             TextButton(enabled=!busy,onClick={vm.setRows(rows.map{it.copy(selected=valid(it))})}){Text("SELECT ALL VALID SHIFTS")}
@@ -90,9 +92,9 @@ import java.time.format.DateTimeFormatter
     val time=DateTimeFormatter.ofPattern("h:mm a",locale)
     var picker by rememberSaveable{mutableStateOf<String?>(null)}
     var lunchInput by rememberSaveable(c.lunch){mutableStateOf(c.lunch?.toString()?:"")}
-    val label="${c.date?:"Unknown date"} · ${if(c.off) "OFF (explicit)" else "${c.start?.format(time)?:"?"} – ${c.end?.format(time)?:"?"}"}"
+    val label="${c.date?.format(DateTimeFormatter.ofPattern("EEE MMM d",locale))?:"Unknown date"} · ${if(c.off) "OFF (explicit)" else "${c.start?.format(time)?:"?"} – ${c.end?.format(time)?:"?"}"}"
     val lunchLabel=when(c.lunchSource){LunchSource.EXPLICIT->"shown";LunchSource.INFERRED_NET->"inferred";LunchSource.DEFAULT->"default proposal";LunchSource.CORRECTED->"corrected"}
-    ExpandableSection(label,"${if(row.selected) "Selected · " else ""}${c.confidence.name.replace('_',' ')} · ${if(c.off) "No schedule to save" else "${match.kind.name.replace('_',' ')} · Lunch ${c.lunch?:"?"}m ($lunchLabel)"}") {
+    ExpandableSection(label,"${if(row.selected) "Selected · " else ""}${c.confidence.name.replace('_',' ')} · ${if(c.off) "No schedule to save" else "${match.kind.name.replace('_',' ')}${c.netMinutes?.let { " · ${it/60}h ${it%60}m paid" }?:""} · Lunch ${c.lunch?:"?"}m ($lunchLabel)"}") {
         if(!c.off) {
             Row { Checkbox(modifier=Modifier.semantics{contentDescription="Select $label"},checked=row.selected,enabled=!busy && (valid || row.selected),onCheckedChange={update(row.copy(selected=it))});Text("Select this shift",Modifier.padding(top=12.dp)) }
             PickerField("Date · ${if(c.date==null) "Unknown" else if(c.weekday!=null && c.date.dayOfWeek!=c.weekday) "Review required" else "High confidence"}",c.date?.toString()?:"Unknown",!busy){picker="date"}
