@@ -14,7 +14,7 @@ import kotlin.coroutines.resumeWithException
 
 /** Images/URIs are memory-only. No uploads, persistent grants, image copies, or OCR logging. */
 class PaystubOcr(private val context:Context) {
-    suspend fun read(uri:Uri):String {
+    suspend fun read(uri:Uri, readingOrder:(List<OcrPiece>)->String = ::ocrRows):String {
         val bitmap=withContext(Dispatchers.IO) {
             if(Build.VERSION.SDK_INT>=28)ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver,uri)){decoder,info,_->
                 val scale=minOf(1.0,3000.0/maxOf(info.size.width,info.size.height));decoder.setTargetSize(maxOf(1,(info.size.width*scale).toInt()),maxOf(1,(info.size.height*scale).toInt()));decoder.allocator=ImageDecoder.ALLOCATOR_SOFTWARE
@@ -45,7 +45,7 @@ class PaystubOcr(private val context:Context) {
             try { suspendCancellableCoroutine { continuation ->
                 recognizer.process(InputImage.fromBitmap(bitmap,0)).addOnSuccessListener { result ->
                     val pieces=result.textBlocks.flatMap{it.lines}.mapNotNull{line->line.boundingBox?.let{OcrPiece(line.text,it.left,it.top,it.right,it.bottom)}}
-                    continuation.resume(ocrRows(pieces).take(20000))
+                    continuation.resume(readingOrder(pieces).take(20000))
                 }.addOnFailureListener{continuation.resumeWithException(it)}
             } } finally {recognizer.close();bitmap.recycle()}
         }

@@ -18,7 +18,7 @@ import com.shifthud.domain.model.*
 import com.shifthud.ui.*
 import java.time.*
 
-@Composable fun ScheduleScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean) {
+@Composable fun ScheduleScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean, importScreenshot: () -> Unit = {}) {
     val app=androidx.compose.ui.platform.LocalContext.current.applicationContext as com.shifthud.ShiftHudApplication
     val planning by app.preferences.plannerSettings.collectAsState(initial=com.shifthud.domain.planner.PlannerSettings())
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -33,6 +33,7 @@ import java.time.*
         Text("Saturday–Friday · ${week.start} – ${week.endInclusive}",style=MaterialTheme.typography.bodySmall)
         Text("${scheduledWeek.size} scheduled shifts this week",style=MaterialTheme.typography.titleMedium)
         Button(onClick={editingId=0},enabled=data.loaded && !busy) { Text("ADD SHIFT") }
+        OutlinedButton(onClick=importScreenshot,enabled=data.loaded && !busy) { Text("Import Schedule Screenshot") }
         if(!data.loaded) CircularProgressIndicator()
         else LazyColumn(verticalArrangement=Arrangement.spacedBy(4.dp)) {
             val dates=((0L..6L).map{week.start.plusDays(it)}+data.schedule.filter{it.date>week.endInclusive}.map{it.date}).distinct().sorted()

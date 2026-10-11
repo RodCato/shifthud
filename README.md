@@ -743,3 +743,9 @@ MVP-005D.1 verification: full build, all 727 unit tests per variant (1,454 execu
 Settings now opens with seven collapsed, searchable categories. Search exposes matching controls automatically; all existing save behavior remains. Dashboard puts shift actions before weekly planning, keeps weekly paid hours/gross visible, and groups records, analytics/paychecks and the calendar into expandable sections. Schedule uses compact expandable rows, current Saturday–Friday context and clear work/day-off labels. The four tabs, existing editors and confirmation flows remain.
 
 See [the screen inventory, scope and acceptance checklist](docs/UI-006A-audit.md). This is a UI-only change; it introduces no schema migration or changes to calculations, notifications, widgets or backup encryption.
+
+### MVP-006B · Schedule screenshot import
+
+Open **Schedule → Import Schedule Screenshot** to choose a Passport image with Android Photo Picker. Recognition runs locally using the existing ML Kit decoder. Review prefilled dates/times, confirm missing year/week information, inspect inferred/default lunches and select shifts before final confirmation. Duplicates are skipped; changed schedules require explicit replacement, retaining IDs and existing lunch plans. Selected writes are transactional and refresh schedules, planner projections, evening reminders and widgets without modifying actual work or payroll.
+
+See [recognition rules, conflict handling and physical acceptance](docs/SCHEDULE-IMPORT-006B.md). Images are not uploaded or retained. No schema migration is introduced.

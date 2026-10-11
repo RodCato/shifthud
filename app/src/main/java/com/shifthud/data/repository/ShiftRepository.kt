@@ -37,6 +37,49 @@ class ShiftRepository(
         val saved=if(shift.plannedLunchMinutes==null) shift.copy(plannedLunchMinutes=settings.plannedMinutes,usesGlobalLunch=true) else shift
         dao.save(saved.entity())
     } }.also { withContext(NonCancellable) { onScheduleChanged() } }
+    /** Confirmed screenshot choices only. Recheck the preview and commit the batch atomically. */
+    suspend fun importSchedule(choices: List<com.shifthud.domain.scheduleimport.ScheduleImportChoice>,
+                               expected: List<ScheduledShift>, week: LocalDate): com.shifthud.domain.scheduleimport.ScheduleImportSummary = changed(historical = true) {
+        val summary = db.withTransaction {
+            require(week.dayOfWeek == DayOfWeek.SATURDAY) { "Select a Saturday–Friday workweek." }
+            require(choices.isNotEmpty() && choices.size <= 50) { "Select at least one valid shift." }
+            val current = dao.scheduleSnapshot().map { it.model() }
+            require(current == expected) { "Schedules changed. Review the refreshed conflicts before importing." }
+            val minimum = plannerSettings().minimumMinutes
+            val records = dao.allSessions().map { it.model() }
+            val working = current.toMutableList()
+            var imported=0; var updated=0; var duplicates=0
+            val replaced=mutableSetOf<Long>()
+            choices.forEach { choice ->
+                val proposed=choice.shift
+                require(proposed.id==0L && proposed.date in week..week.plusDays(6)) { "Every selected date must be in the confirmed week." }
+                val old=choice.replacing
+                require(proposed.plannedLunchMinutes != null && proposed.plannedLunchMinutes in minimum..240) { "Review lunch duration against the current employer minimum." }
+                if(old!=null) {
+                    require(old in current && replaced.add(old.id)) { "Replacement changed or was selected twice." }
+                    require(records.none { it.scheduledShiftId==old.id }) { "A worked or active schedule cannot be replaced by screenshot import." }
+                    require(old.date==proposed.date) { "Replacement must be on the same date." }
+                }
+                val saved=if(old==null) proposed else proposed.copy(id=old.id,notes=old.notes,
+                    plannedLunchMinutes=old.plannedLunchMinutes,usesGlobalLunch=old.usesGlobalLunch,lunchPlanApplied=old.lunchPlanApplied)
+                val others=working.filter{old==null || it.id!=old.id}
+                val match=com.shifthud.domain.scheduleimport.classify(saved,others)
+                if(match.kind==com.shifthud.domain.scheduleimport.ImportKind.EXACT_DUPLICATE) { duplicates++ }
+                else {
+                    require(others.none { com.shifthud.domain.scheduleimport.overlaps(saved,it) }) { "Selected shifts overlap. Nothing was imported." }
+                    require(old!=null || match.kind==com.shifthud.domain.scheduleimport.ImportKind.NEW) { "Review the existing schedule and explicitly confirm replacement." }
+                    require(saved.plannedLunchMinutes==null || saved.plannedLunchMinutes < java.time.Duration.between(saved.start,saved.end).toMinutes()) { "Lunch must be shorter than the shift." }
+                    dao.save(saved.entity())
+                    if(old!=null) { working.remove(old);updated++ } else imported++
+                    working.add(saved)
+                }
+            }
+            com.shifthud.domain.scheduleimport.ScheduleImportSummary(imported,updated,duplicates)
+        }
+        // Redraw-only hook above avoids auto-lunch reconciliation and live alert delivery.
+        val refreshDeferred=withContext(NonCancellable) { runCatching { onScheduleChanged() }.isFailure }
+        summary.copy(refreshDeferred=refreshDeferred)
+    }
     /** Freeze legacy implicit defaults before changing preferences; effective plans are unchanged. */
     suspend fun preserveLegacyLunchPlans(settings: com.shifthud.domain.planner.PlannerSettings) = db.withTransaction {
         val shifts=dao.scheduleSnapshot().map { it.model() }
