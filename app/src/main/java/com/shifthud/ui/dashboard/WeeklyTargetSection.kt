@@ -44,10 +44,11 @@ import java.time.format.DateTimeFormatter
             }
             if(data.session?.state == ShiftState.ON_LUNCH) Text("Paid time paused during lunch. Estimate updates when lunch ends.")
             plan.issues.forEach { Text(it,style=MaterialTheme.typography.bodySmall) }
-            Text("Based only on saved shifts; confirm the week’s schedule is complete. Leaving early requires manager approval.",style=MaterialTheme.typography.bodySmall)
+            Text("Saved-schedule estimate · Manager approval required.",style=MaterialTheme.typography.bodySmall)
             com.shifthud.ui.settings.LunchPlanControl(vm,busy)
             TextButton(onClick={details=!details}) { Text(if(details) "HIDE PLANNING DETAILS" else "PLANNING DETAILS") }
             if(details) {
+                Text("Confirm that the week’s saved schedule is complete.",style=MaterialTheme.typography.bodySmall)
                 Text("Completed: ${plan.completed.display()}\nActive paid work: ${plan.activePaid.display()}\nFuture scheduled paid work: ${plan.futurePaid.display()}")
                 Text("Planning estimate only. Employer timecard is authoritative. No punches or schedules are changed.",style=MaterialTheme.typography.bodySmall)
             }

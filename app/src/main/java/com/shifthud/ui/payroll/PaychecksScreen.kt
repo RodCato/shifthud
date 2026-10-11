@@ -33,7 +33,7 @@ import java.time.format.*
     fun signed(cents:Long?)=cents?.let{(if(it>0)"+" else "")+money(it,locale)}?:"Not yet comparable"
     fun edit(value:Paycheck){editing=PayrollDraft.from(value).serialize()}
     LazyColumn(Modifier.fillMaxSize(),state=list,contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-        item { TextButton(onClick=back){Text("‹ WORK ANALYTICS")};Text("Paychecks",style=MaterialTheme.typography.headlineMedium);Text("Manual payroll comparison · Personal tracker, not official Publix payroll.",style=MaterialTheme.typography.bodySmall) }
+        item { TextButton(onClick=back){Text("‹ BACK")};Text("Paychecks",style=MaterialTheme.typography.headlineMedium);Text("Manual payroll comparison · Personal tracker, not official Publix payroll.",style=MaterialTheme.typography.bodySmall) }
         if(state.error!=null)item{Text(state.error!!,color=MaterialTheme.colorScheme.error);Button(onClick=vm::retry){Text("RETRY")}}
         else if(p==null || state.estimate==null)item{LinearProgressIndicator(Modifier.fillMaxWidth())}
         else {

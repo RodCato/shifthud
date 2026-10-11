@@ -24,25 +24,37 @@ import java.time.*
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var deletingId by rememberSaveable { mutableStateOf<Long?>(null) }
     val today = data.now.atZone(ZoneId.systemDefault()).toLocalDate()
-    Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Schedule", style = MaterialTheme.typography.headlineMedium)
-        Button(onClick = { editingId = 0 }, enabled = data.loaded && !busy) { Text("ADD SHIFT") }
-        if (!data.loaded) CircularProgressIndicator()
-        else if (data.schedule.none { it.date >= today }) Text("No upcoming shifts. Enter your schedule manually.")
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(data.schedule.filter { it.date >= today }, key = { it.id }) { shift ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(if (shift.date == today) "TODAY • ${shift.date.format(dateFormat)}" else shift.date.format(dateFormat), style = MaterialTheme.typography.titleMedium)
-                        Text(shift.timeLabel())
-                        Text(if(shift.usesGlobalLunch || shift.plannedLunchMinutes==null) "Global default plan: ${shift.plannedLunchMinutes ?: planning.plannedMinutes} minutes" else "Individual override: ${shift.plannedLunchMinutes} minutes")
-                        shift.notes?.let { Text(it) }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = { editingId = shift.id }, enabled = !busy) { Text("Edit") }
-                            TextButton(onClick = { deletingId = shift.id }, enabled = !busy) { Text("Delete") }
+    val records by app.repository.sessions.collectAsState(initial=emptyList())
+    val week=com.shifthud.domain.pay.workWeekFor(today)
+    val scheduledWeek=data.schedule.filter { it.date in week }
+    val zone=ZoneId.systemDefault()
+    Column(Modifier.fillMaxSize().padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        Text("Schedule",style=MaterialTheme.typography.headlineMedium)
+        Text("Saturday–Friday · ${week.start} – ${week.endInclusive}",style=MaterialTheme.typography.bodySmall)
+        Text("${scheduledWeek.size} scheduled shifts this week",style=MaterialTheme.typography.titleMedium)
+        Button(onClick={editingId=0},enabled=data.loaded && !busy) { Text("ADD SHIFT") }
+        if(!data.loaded) CircularProgressIndicator()
+        else LazyColumn(verticalArrangement=Arrangement.spacedBy(4.dp)) {
+            val dates=((0L..6L).map{week.start.plusDays(it)}+data.schedule.filter{it.date>week.endInclusive}.map{it.date}).distinct().sorted()
+            items(dates,key={it.toEpochDay()}) { date ->
+                val shifts=data.schedule.filter{it.date==date}.chronological()
+                if(shifts.isEmpty()) {
+                    val worked=records.filter{it.clockIn.atZone(zone).toLocalDate()==date}
+                    Text("${date.format(dateFormat)} · ${if(worked.any{it.clockOut==null}) "Active · Unscheduled" else if(worked.isNotEmpty()) "Worked · Unscheduled" else "Day off · No shift saved"}",modifier=Modifier.padding(vertical=8.dp),style=MaterialTheme.typography.bodyMedium)
+                }
+                shifts.forEach { shift -> key(shift.id) {
+                    val linked=records.filter{it.scheduledShiftId==shift.id}
+                    val status=when { linked.any{it.clockOut==null}->"Active shift";linked.isNotEmpty()->"Completed work";else->"Scheduled work" }
+                    val lunch=shift.plannedLunchMinutes ?: planning.plannedMinutes
+                    com.shifthud.ui.components.ExpandableSection("${shift.date.format(dateFormat)} · ${shift.timeLabel()}","$status · Lunch $lunch min") {
+                        Text(if(shift.usesGlobalLunch || shift.plannedLunchMinutes==null) "Global default plan: $lunch minutes" else "Individual override: $lunch minutes")
+                        shift.notes?.let{Text(it)}
+                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick={editingId=shift.id},enabled=!busy) { Text("Edit shift") }
+                            TextButton(onClick={deletingId=shift.id},enabled=!busy) { Text("Delete shift") }
                         }
                     }
-                }
+                } }
             }
         }
     }
