@@ -1,3 +1,5 @@
+> MVP-006B.2 supersedes the per-shift lunch-review workflow described below. See [dynamic weekly planning](DYNAMIC-LUNCH-006B2.md) for the current behavior and employer metadata separation.
+
 # MVP-006B · Schedule screenshot import
 
 ## Dependency and scope

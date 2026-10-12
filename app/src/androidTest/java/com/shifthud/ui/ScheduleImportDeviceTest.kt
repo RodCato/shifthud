@@ -103,7 +103,7 @@ Displayed weekly net: 37 hours"""
             "scheduleRows" to JSONArray().apply{parsed.rows.forEach{put(ReviewRow(it).json())}}.toString()))
         val vm=ScheduleImportViewModel(app,state)
         ui.setContent{ShiftHudTheme{ScheduleImportScreen(vm){}}}
-        ui.onNodeWithText("Review projection: 37h 0m paid").assertExists()
+        ui.onNodeWithText("Employer reported: 37h 0m paid").assertExists()
         ui.onNodeWithText("Recognized hours match the total. This does not prove all days are visible.").assertExists()
         ui.onNodeWithText("SELECT ALL VALID SHIFTS").performScrollTo().performClick()
         ui.onNodeWithText("REVIEW IMPORT (5)").performScrollTo().performClick()

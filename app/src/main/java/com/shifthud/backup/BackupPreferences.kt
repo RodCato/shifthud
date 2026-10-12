@@ -9,7 +9,7 @@ import java.time.LocalDate
 import com.shifthud.domain.pay.PayRate
 
 internal val SHIFT_KEYS=mapOf(
-    "clockout_planner" to "s", "lunch_threshold_minutes" to "i","auto_lunch_enabled" to "b","auto_lunch_minutes" to "i",
+    "weekly_lunch_plans" to "s", "clockout_planner" to "s", "lunch_threshold_minutes" to "i","auto_lunch_enabled" to "b","auto_lunch_minutes" to "i",
     "lunch_warning_offsets" to "set","lunch_snooze_minutes" to "i",
     "weekly_target_enabled" to "b","weekly_target_minutes" to "i","weekly_target_warnings" to "set",
     "shift_end_enabled" to "b","shift_end_lead" to "i","shift_end_snooze" to "i")
@@ -66,6 +66,7 @@ class BackupPreferences(context:Context,private val shift:ShiftPreferences,priva
                 return decode(j)
             }
             val s=fields("shift",SHIFT_KEYS+if(runtime)RECEIPT_KEYS.associateWith{"s"} else emptyMap())
+            (s["weekly_lunch_plans"] as? String)?.let { ShiftPreferences.decodeWeeklyLunches(it) }
             (s["clockout_planner"] as? String)?.let { ShiftPreferences.decodePlanner(it) }
             fun range(key:String,range:IntRange){s[key]?.let{require(it as Int in range){"Invalid $key."}}}
             range("lunch_threshold_minutes",1..1440);range("auto_lunch_minutes",1..1440)

@@ -9,38 +9,21 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.shifthud.ShiftHudApplication
 import com.shifthud.domain.planner.*
 import com.shifthud.ui.ShiftViewModel
-import java.time.LocalDate
 
 @Composable internal fun PlannerSettingsSection(vm: ShiftViewModel, enabled: Boolean) {
     val app = LocalContext.current.applicationContext as ShiftHudApplication
-    val settings by app.preferences.plannerSettings.collectAsState(initial = PlannerSettings())
-    val shifts by app.repository.schedule.collectAsState(initial = emptyList())
-    var planned by remember(settings) { mutableStateOf(settings.plannedMinutes.toString()) }
-    var minimum by remember(settings) { mutableStateOf(settings.minimumMinutes.toString()) }
-    var strategy by remember(settings) { mutableStateOf(settings.strategy) }
-    var custom by remember(settings) { mutableStateOf(settings.custom.mapValues { it.value.toString() }) }
+    val settings by app.preferences.weeklyPlannerSettings.collectAsState(initial = PlannerSettings())
+    var planned by remember(settings.plannedMinutes) { mutableStateOf(settings.plannedMinutes.coerceAtLeast(31).toString()) }
+    var minimum by remember(settings.minimumMinutes) { mutableStateOf(settings.minimumMinutes.toString()) }
     var alerts by remember(settings) { mutableStateOf(settings.alerts) }
     var error by remember { mutableStateOf<String?>(null) }
     Text("Weekly Hours Planner",style=MaterialTheme.typography.titleLarge)
     LunchPlanControl(vm,!enabled)
-    Text("Uses the weekly target above. Actual punches and lunch timers are unchanged. Bulk schedule edits require confirmation.")
-    Text("Default planned lunch duration: ${settings.plannedMinutes} minutes. Use Adjust lunch plan for a live preview.")
+    Text("Weekly plans affect projections only. Actual punches and lunch timers are unchanged.")
+    OutlinedTextField(planned,{planned=it},label={Text("Default planned lunch duration")},singleLine=true,enabled=enabled,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number))
+    Text("Weeks without a saved plan inherit this default. Saved weekly plans remain independent.")
     OutlinedTextField(minimum,{minimum=it},label={Text("Minimum permitted lunch (minutes)")},singleLine=true,enabled=enabled,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number))
-    Text("Confirm the minimum with your employer. Default 30 minutes is a planning assumption, not a policy determination.",style=MaterialTheme.typography.bodySmall)
-    Text("Confirmed per-shift and bulk lunch plans take precedence over these fallback strategies.",style=MaterialTheme.typography.bodySmall)
-    LunchStrategy.entries.forEach { choice ->
-        TextButton(enabled=enabled,onClick={strategy=choice}) { Text((if(strategy==choice) "✓ " else "")+when(choice) {
-            LunchStrategy.FULL -> "Full lunches, scheduled departure"
-            LunchStrategy.SHORTER -> "Shorter lunches, earlier final-day departure"
-            LunchStrategy.CUSTOM -> "Custom lunches by scheduled day"
-        }) }
-    }
-    if(strategy==LunchStrategy.CUSTOM) {
-        Text("Each value applies to every shift starting on that date. Blank uses the saved shift lunch or planned default.")
-        shifts.map { it.date }.filter { it >= LocalDate.now().minusDays(6) }.distinct().sorted().forEach { date ->
-            OutlinedTextField(custom[date]?:"",{custom=custom+(date to it)},label={Text("$date · lunch minutes")},singleLine=true,enabled=enabled,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number))
-        }
-    }
+    Text("Confirm your employer's minimum. Weekly planning permits at least 31 minutes. Legacy per-shift overrides are retained for reference but no longer drive weekly projections.",style=MaterialTheme.typography.bodySmall)
     Text("Optional final-day clock-out alerts",style=MaterialTheme.typography.titleMedium)
     listOf(60,30,15,0).forEach { offset ->
         Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
@@ -50,8 +33,8 @@ import java.time.LocalDate
     }
     Text("Uses the weekly hours channel. Saved schedules must support the estimate. No alert guarantees permission to leave or delivery to Garmin.",style=MaterialTheme.typography.bodySmall)
     Button(enabled=enabled,onClick={
-        val parsed=runCatching { PlannerSettings(planned.toInt(),minimum.toInt(),strategy,custom.filterValues { it.isNotBlank() }.mapValues { it.value.toInt() },alerts) }
-        parsed.onSuccess { vm.planner(it);error=null }.onFailure { error="Enter whole minutes: minimum 1–240; planned and custom lunches must be at least the minimum and at most 240." }
+        val parsed=runCatching { settings.copy(plannedMinutes=planned.toInt().also { require(it in maxOf(31,minimum.toInt())..240) },minimumMinutes=minimum.toInt(),alerts=alerts) }
+        parsed.onSuccess { vm.planner(it);error=null }.onFailure { error="Enter whole minutes: minimum 1–240; planned lunch must be at least 31, meet the minimum, and be at most 240." }
     }) { Text("SAVE PLANNING PREFERENCES") }
     error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
 }

@@ -69,11 +69,11 @@ class ShiftViewModel(private val app: ShiftHudApplication) : ViewModel() {
         catch (e: Exception) { _error.value = e.message ?: "Could not save warning." }
     }
     fun planner(settings: com.shifthud.domain.planner.PlannerSettings) = perform {
-        com.shifthud.backup.DataGate.with {
-            val previous=app.preferences.plannerSettings.first()
-            if(previous.plannedMinutes!=settings.plannedMinutes) app.repository.preserveLegacyLunchPlans(previous)
-            app.preferences.setPlanner(settings)
-        }
+        app.preferences.setPlanner(settings)
+    }
+    fun weeklyLunch(week: LocalDate, minutes: Int, done: () -> Unit) = perform {
+        app.preferences.setWeeklyLunch(week, minutes)
+        done()
     }
     fun applyLunch(expected: List<ScheduledShift>, minutes: Int, replace: Boolean, week: LocalDate, done: () -> Unit) = perform {
         app.repository.applyLunchPlan(expected,minutes,replace,week,ZoneId.systemDefault());done()

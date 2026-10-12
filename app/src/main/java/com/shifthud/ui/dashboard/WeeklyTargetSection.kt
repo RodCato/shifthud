@@ -19,7 +19,7 @@ import java.time.format.DateTimeFormatter
     val context = LocalContext.current
     val app = context.applicationContext as ShiftHudApplication
     val settings by app.preferences.weeklyTargetSettings.collectAsState(initial = WeeklyTargetSettings())
-    val planning by app.preferences.plannerSettings.collectAsState(initial = PlannerSettings())
+    val planning by app.preferences.weeklyPlannerSettings.collectAsState(initial = PlannerSettings())
     val locale = LocalConfiguration.current.locales[0]
     if (!settings.enabled) return
     if (!data.pay.loaded) { Text("Weekly target: ${data.pay.error ?: "Loading records…"}"); return }
@@ -33,6 +33,15 @@ import java.time.format.DateTimeFormatter
             Text("Worked: ${plan.worked.display()} · Target: ${settings.target.display()}")
             Text(if(plan.reached) "Weekly target reached." else "Remaining paid time: ${plan.remaining.display()}", style = MaterialTheme.typography.titleMedium)
             LinearProgressIndicator(progress = { (plan.worked.toMillis().toDouble()/settings.target.toMillis()).coerceIn(0.0,1.0).toFloat() }, modifier = Modifier.fillMaxWidth())
+            Text("Planned lunch: ${planning.weeklyMinutes(data.now.atZone(zone).toLocalDate())}m")
+            val week=com.shifthud.domain.pay.workWeekFor(data.now.atZone(zone).toLocalDate())
+            val employer=data.schedule.filter { it.date in week }
+            if(employer.isNotEmpty()) {
+                val known=employer.mapNotNull { it.employerNetMinutes }
+                Text(if(known.size==employer.size) "Employer scheduled paid hours: ${Duration.ofMinutes(known.sum().toLong()).display()}"
+                    else "Employer paid hours: ${known.size} of ${employer.size} shifts reported")
+            }
+            Text("Projected remaining: ${plan.futurePaid.display()}")
             Text("Projected weekly total: ${plan.projected.display()}")
             if(!plan.excess.isZero) Text("Schedule exceeds target by ${plan.excess.display()}. Discuss an earlier departure.",color=MaterialTheme.colorScheme.error)
             if(!plan.shortfall.isZero) Text("Projected shortfall: ${plan.shortfall.display()}")

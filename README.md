@@ -751,3 +751,7 @@ Open **Schedule → Import Schedule Screenshot** to choose a Passport image with
 See [recognition rules, conflict handling and physical acceptance](docs/SCHEDULE-IMPORT-006B.md). Images are not uploaded or retained. No schema migration is introduced.
 
 MVP-006B.1 retains OCR block/line/element geometry for Passport's left date badges and central shift details. It recognizes a standalone Saturday week header, validates badge dates, and reconstructs complete review rows before parsing times and net hours. Missing/cropped days are not assumed OFF. See the import guide for regression coverage and physical retest steps.
+
+### MVP-006B.2: dynamic weekly lunch planning
+
+Dashboard **Edit Lunch Plan** now previews and saves one personal lunch assumption per Saturday–Friday week (31–240 minutes, subject to the employer minimum). Actual punches replace projections; Schedule and screenshot import no longer require individual lunch entry. Legacy overrides remain stored for reference. Room 8 adds nullable employer schedule metadata; encrypted backups include weekly plans and remain compatible with schema 6/7 backups. See [behavior, migration strategy, and device checklist](docs/DYNAMIC-LUNCH-006B2.md).
