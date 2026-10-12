@@ -759,3 +759,7 @@ Dashboard **Edit Lunch Plan** now previews and saves one personal lunch assumpti
 ### MVP-006C: stabilization and navigation
 
 Schedule now filters to a selected Saturday–Friday week, keeps legacy lunch metadata under Advanced details, and preserves selection across recreation. Dashboard prioritizes shift actions and distinguishes actual work from personal projections. Current-week lunch-plan changes refresh planner alerts without changing punches. See the [stabilization audit and device checklist](docs/STABILIZATION-006C.md).
+
+### MVP-006C.1: Schedule weekly planning
+
+Schedule now shows employer scheduled hours, actual paid time, personal projections and target differences for the selected week. **EDIT WEEKLY LUNCH PLAN** opens that same week in the existing planner. Missing employer hours are explicitly estimated using existing lunch rules. See [behavior and acceptance checks](docs/SCHEDULE-PLANNING-006C1.md).
