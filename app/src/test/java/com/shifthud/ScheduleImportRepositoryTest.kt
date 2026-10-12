@@ -90,4 +90,21 @@ class ScheduleImportRepositoryTest {
         assertEquals(1,result.imported);assertTrue(result.refreshDeferred);assertEquals(1,repo.schedule.first().size)
     }
 
+    @Test fun deletingSchedulePreservesCompletedPunchesPayrollAndPaidDuration()=runBlocking {
+        repo.save(s());val scheduled=repo.schedule.first().single()
+        val start=week.atTime(8,0).toInstant(ZoneOffset.UTC)
+        val completed=WorkSession(801,scheduled.id,start,start.plusSeconds(4*3600),start.plusSeconds(5*3600),start.plusSeconds(9*3600),ShiftState.COMPLETE)
+        db.shifts().insert(com.shifthud.data.local.entity.WorkSessionEntity(801,scheduled.id,start.toEpochMilli(),completed.lunchStart!!.toEpochMilli(),completed.lunchEnd!!.toEpochMilli(),completed.clockOut!!.toEpochMilli(),ShiftState.COMPLETE.name))
+        val payroll=PayrollRepository(db);payroll.save(Paycheck(periodStart=week,periodEnd=week.plusDays(6),grossCents=12800))
+        val facts=payroll.paychecks.first();val before=repo.sessions.first().single()
+        val end=start.plusSeconds(10*3600);val paid=ShiftEngine().durations(before,360,end).paid
+        val previousReminders=reminders
+        repo.delete(scheduled.id)
+        assertTrue(repo.schedule.first().isEmpty());assertEquals(previousReminders+1,reminders)
+        val after=repo.sessions.first().single()
+        assertEquals(before.copy(scheduledShiftId=null),after)
+        assertEquals(paid,ShiftEngine().durations(after,360,end).paid)
+        assertEquals(facts,payroll.paychecks.first())
+    }
+
 }

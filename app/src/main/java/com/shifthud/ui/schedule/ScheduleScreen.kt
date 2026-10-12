@@ -10,6 +10,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.shifthud.domain.model.*
@@ -22,38 +24,53 @@ import java.time.*
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var deletingId by rememberSaveable { mutableStateOf<Long?>(null) }
     val today = data.now.atZone(ZoneId.systemDefault()).toLocalDate()
-    val records by app.repository.sessions.collectAsState(initial=emptyList())
-    val week=com.shifthud.domain.pay.workWeekFor(today)
-    val scheduledWeek=data.schedule.filter { it.date in week }
+    var selectedWeek by rememberSaveable { mutableStateOf(scheduleWeek(today).start.toEpochDay()) }
+    val week=scheduleWeek(LocalDate.ofEpochDay(selectedWeek))
+    val locale=LocalConfiguration.current.locales[0]
     val zone=ZoneId.systemDefault()
-    Column(Modifier.fillMaxSize().padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+    val recordsFlow=remember(week.start,zone) { app.repository.sessionsBetween(week.start,week.endInclusive.plusDays(1),zone) }
+    val records by recordsFlow.collectAsState(initial=emptyList())
+    val scheduledWeek=remember(data.schedule,week) { week.scheduleRows(data.schedule) }
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp).testTag("schedule-list"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        item { Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Text("Schedule",style=MaterialTheme.typography.headlineMedium)
-        Text("Saturday–Friday · ${week.start} – ${week.endInclusive}",style=MaterialTheme.typography.bodySmall)
-        Text("${scheduledWeek.size} scheduled shifts this week",style=MaterialTheme.typography.titleMedium)
+        Text(week.scheduleLabel(locale),style=MaterialTheme.typography.titleMedium,modifier=Modifier.testTag("selected-schedule-week").semantics { heading() })
+        Text("Saturday–Friday · ${scheduledWeek.size} scheduled shifts",style=MaterialTheme.typography.bodySmall)
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+            TextButton(onClick={selectedWeek=week.moveWeeks(-1).start.toEpochDay()},modifier=Modifier.weight(1f).semantics { contentDescription="Previous week" }) { Text("‹ Previous week") }
+            TextButton(onClick={selectedWeek=week.moveWeeks(1).start.toEpochDay()},modifier=Modifier.weight(1f).semantics { contentDescription="Next week" }) { Text("Next week ›") }
+        }
         Button(onClick={editingId=0},enabled=data.loaded && !busy) { Text("ADD SHIFT") }
         OutlinedButton(onClick=importScreenshot,enabled=data.loaded && !busy) { Text("Import Schedule Screenshot") }
-        if(!data.loaded) CircularProgressIndicator()
-        else LazyColumn(verticalArrangement=Arrangement.spacedBy(4.dp)) {
-            val dates=((0L..6L).map{week.start.plusDays(it)}+data.schedule.filter{it.date>week.endInclusive}.map{it.date}).distinct().sorted()
+        } }
+        if(!data.loaded) item { CircularProgressIndicator() }
+        else {
+            if(scheduledWeek.isEmpty()) item { Text("No scheduled shifts in this week.",modifier=Modifier.padding(vertical=8.dp)) }
+            val dates=(0L..6L).map{week.start.plusDays(it)}
             items(dates,key={it.toEpochDay()}) { date ->
-                val shifts=data.schedule.filter{it.date==date}.chronological()
+                val shifts=scheduledWeek.filter{it.date==date}
                 if(shifts.isEmpty()) {
                     val worked=records.filter{it.clockIn.atZone(zone).toLocalDate()==date}
-                    Text("${date.format(dateFormat)} · ${if(worked.any{it.clockOut==null}) "Active · Unscheduled" else if(worked.isNotEmpty()) "Worked · Unscheduled" else "Day off · No shift saved"}",modifier=Modifier.padding(vertical=8.dp),style=MaterialTheme.typography.bodyMedium)
+                    Text("${date.format(dateFormat)} · ${if(worked.any{it.clockOut==null}) "Active · Unscheduled" else if(worked.isNotEmpty()) "Worked · Unscheduled" else "No shift saved"}",modifier=Modifier.padding(vertical=8.dp),style=MaterialTheme.typography.bodyMedium)
                 }
                 shifts.forEach { shift -> key(shift.id) {
                     val linked=records.filter{it.scheduledShiftId==shift.id}
                     val status=when { linked.any{it.clockOut==null}->"Active shift";linked.isNotEmpty()->"Completed work";else->"Scheduled work" }
                     val lunch=planning.weeklyMinutes(shift.date)
-                    com.shifthud.ui.components.ExpandableSection("${shift.date.format(dateFormat)} · ${shift.timeLabel()}","$status · Lunch $lunch min") {
-                        Text("Weekly projection lunch: $lunch minutes · Edit Lunch Plan on Dashboard")
-                        shift.plannedLunchMinutes?.let { Text("Legacy lunch value: $it minutes · Retained for reference") }
-                        shift.employerNetMinutes?.let { Text("Employer scheduled paid time: ${it/60}h ${it%60}m") }
-                        shift.employerLunchMinutes?.let { Text("Employer lunch: $it minutes · Schedule metadata") }
+                    com.shifthud.ui.components.ExpandableSection("${shift.date.format(dateFormat)}\n${shift.timeLabel()}",status) {
+                        Text("Date: ${shift.date.editorLabel(locale)}")
+                        Text("Start: ${shift.scheduledStart.editorLabel(locale)}")
+                        Text("End: ${shift.scheduledEnd.editorLabel(locale)}${if(shift.end.toLocalDate()!=shift.date) " · Next day" else ""}")
                         shift.notes?.let{Text(it)}
                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick={editingId=shift.id},enabled=!busy) { Text("Edit shift") }
                             TextButton(onClick={deletingId=shift.id},enabled=!busy) { Text("Delete shift") }
+                        }
+                        com.shifthud.ui.components.ExpandableSection("Advanced schedule details","Employer metadata and retained lunch values") {
+                            Text("Weekly projection lunch: $lunch minutes · Edit Lunch Plan on Dashboard")
+                            shift.plannedLunchMinutes?.let { Text("Legacy lunch value: $it minutes · Retained for reference") }
+                            shift.employerNetMinutes?.let { Text("Employer reported paid time: ${it/60}h ${it%60}m") }
+                            shift.employerLunchMinutes?.let { Text("Employer lunch: $it minutes · Schedule metadata") }
                         }
                     }
                 } }
@@ -62,7 +79,7 @@ import java.time.*
     }
     editingId?.let { id ->
         val existing = data.schedule.firstOrNull { it.id == id }
-        key(id) { ShiftEditor(existing, today, busy, { editingId = null }) { vm.save(it) { editingId = null } } }
+        key(id) { ShiftEditor(existing, if(today in week) today else week.start, busy, { editingId = null }) { vm.save(it) { editingId = null } } }
     }
     deletingId?.let { id -> AlertDialog(onDismissRequest = { if (!busy) deletingId = null }, title = { Text("Delete scheduled shift?") }, text = { Text("Any recorded work session will be kept, without its schedule association.") }, confirmButton = { TextButton(onClick = { vm.delete(id) { deletingId = null } }, enabled = !busy) { Text("Delete") } }, dismissButton = { TextButton(onClick = { deletingId = null }, enabled = !busy) { Text("Cancel") } }) }
 }

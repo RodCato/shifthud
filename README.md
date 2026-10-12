@@ -755,3 +755,7 @@ MVP-006B.1 retains OCR block/line/element geometry for Passport's left date badg
 ### MVP-006B.2: dynamic weekly lunch planning
 
 Dashboard **Edit Lunch Plan** now previews and saves one personal lunch assumption per Saturday–Friday week (31–240 minutes, subject to the employer minimum). Actual punches replace projections; Schedule and screenshot import no longer require individual lunch entry. Legacy overrides remain stored for reference. Room 8 adds nullable employer schedule metadata; encrypted backups include weekly plans and remain compatible with schema 6/7 backups. See [behavior, migration strategy, and device checklist](docs/DYNAMIC-LUNCH-006B2.md).
+
+### MVP-006C: stabilization and navigation
+
+Schedule now filters to a selected Saturday–Friday week, keeps legacy lunch metadata under Advanced details, and preserves selection across recreation. Dashboard prioritizes shift actions and distinguishes actual work from personal projections. Current-week lunch-plan changes refresh planner alerts without changing punches. See the [stabilization audit and device checklist](docs/STABILIZATION-006C.md).

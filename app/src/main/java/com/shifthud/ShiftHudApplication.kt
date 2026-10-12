@@ -34,5 +34,11 @@ class ShiftHudApplication : Application() {
     val repository by lazy { ShiftRepository(database, engine, onChanged = { widgetRefresh.refresh() }, onHistoricalChanged = { widgetRefresh.redrawHistorical() }, autoLunchSettings = { preferences.autoLunchSettings.first() }, onSessionDeleted = { notifications.forgetSession(it) }, onScheduleChanged = { upcoming.reschedule(debounce = true) }, plannerSettings = { preferences.weeklyPlannerSettings.first() }) }
     val payroll by lazy { com.shifthud.data.repository.PayrollRepository(database) }
     val quickFind by lazy { com.shifthud.data.repository.QuickFindRepository(database, onChanged = { widgetRefresh.refresh() }) }
-    val preferences by lazy { ShiftPreferences(this, onChanged = { widgetRefresh.refresh() }) }
+    val preferences by lazy { ShiftPreferences(this, onChanged = { widgetRefresh.refresh() }, onPlanningChanged = { week ->
+        if(week==com.shifthud.domain.pay.workWeekFor(java.time.LocalDate.now()).start) {
+            try { notifications.planningChanged() }
+            catch(e:Exception) { android.util.Log.w("ShiftHUDPlanner","Notification refresh deferred to active refresh",e) }
+            com.shifthud.service.ActiveShiftService.requestRefresh()
+        }
+    }) }
 }

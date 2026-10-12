@@ -87,7 +87,7 @@ class UiRefinementTest {
         val s=ScheduledShift(990,today,LocalTime.of(4,0),LocalTime.of(13,0),60)
         ui.setContent { ShiftHudTheme { ScheduleScreen(data().copy(schedule=listOf(s)),vm(),false) } }
         ui.onNodeWithText("Edit shift").assertDoesNotExist()
-        ui.onNodeWithText("Lunch 60 min",substring=true).performScrollTo().performClick()
+        ui.onNodeWithText("Scheduled work",substring=true).performScrollTo().performClick()
         ui.onNodeWithText("Edit shift").performScrollTo().performClick()
         ui.onNodeWithText("Override lunch minutes (blank = default)").assertDoesNotExist()
         ui.onNodeWithText("Note (optional)").assertExists()
