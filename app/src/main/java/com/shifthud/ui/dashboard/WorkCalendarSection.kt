@@ -28,7 +28,7 @@ import java.util.Locale
     val use24 = android.text.format.DateFormat.is24HourFormat(context)
     val estimator = remember(vm.engine) { PayEstimator(vm.engine) }
     var selectedDate by rememberSaveable { mutableStateOf<String?>(null) }
-    val days = workCalendar(calendar.month, calendar.schedule, calendar.sessions, data.pay.rates, data.now, zone, estimator)
+    val days = if(showCalendar) workCalendar(calendar.month, calendar.schedule, calendar.sessions, data.pay.rates, data.now, zone, estimator) else emptyList()
     val dateFormat = DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale)
     fun stamp(value: Instant): String = value.atZone(zone).format(DateTimeFormatter.ofPattern(
         "MMM d, " + if (use24) "HH:mm" else "h:mm a", locale))

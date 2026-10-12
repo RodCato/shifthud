@@ -195,6 +195,12 @@ class ShiftNotifications(private val context: Context) {
         accepted
     }
 
+    /** A saved assumption invalidates the displayed planner estimate, not other reminder receipts. */
+    suspend fun planningChanged() {
+        mutex.withLock { manager.cancel(PLANNER_ID) }
+        refresh()
+    }
+
     suspend fun refresh() = mutex.withLock {
         createChannels()
         val app = context.applicationContext as ShiftHudApplication
@@ -225,7 +231,7 @@ class ShiftNotifications(private val context: Context) {
         nextWeeklyTarget = listOfNotNull(nextWeeklyTarget,plannerNext).minOrNull()
         val currentPlan = com.shifthud.domain.planner.clockOutPlan(weeklySessions,snapshot.schedule,
             app.preferences.weeklyTargetSettings.first().target,app.preferences.weeklyPlannerSettings.first(),now,ZoneId.systemDefault())
-        if(session?.clockOut != null || session == null || !app.preferences.weeklyTargetSettings.first().enabled || app.preferences.weeklyPlannerSettings.first().alerts.isEmpty()) manager.cancel(PLANNER_ID)
+        if(session?.clockOut != null || session == null || (!currentPlan.reached && (currentPlan.clockOut==null || currentPlan.issues.isNotEmpty())) || !app.preferences.weeklyTargetSettings.first().enabled || app.preferences.weeklyPlannerSettings.first().alerts.isEmpty()) manager.cancel(PLANNER_ID)
         val endDecision = app.preferences.deliverShiftEnd(snapshot, now, ZoneId.systemDefault()) { event, minutes ->
             try {
                 if (manager.activeNotifications.any { it.id==PLANNER_ID && kotlin.math.abs(now.toEpochMilli()-it.postTime)<30_000 } &&

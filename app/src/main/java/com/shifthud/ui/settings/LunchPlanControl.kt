@@ -50,17 +50,24 @@ import java.time.format.DateTimeFormatter
         Surface(shape=MaterialTheme.shapes.large) { Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
             Text("Weekly Lunch Plan",style=MaterialTheme.typography.titleLarge)
             Text("Saturday–Friday: $week – ${week.plusDays(6)}")
-            Row {
-                TextButton(enabled=!busy,onClick={weekText=week.minusWeeks(1).toString()}) { Text("Previous week") }
-                TextButton(enabled=!busy,onClick={weekText=week.plusWeeks(1).toString()}) { Text("Next week") }
+            Row(Modifier.fillMaxWidth()) {
+                TextButton(modifier=Modifier.weight(1f),enabled=!busy,onClick={weekText=week.minusWeeks(1).toString()}) { Text("Previous week") }
+                TextButton(modifier=Modifier.weight(1f),enabled=!busy,onClick={weekText=week.plusWeeks(1).toString()}) { Text("Next week") }
             }
             OutlinedTextField(minutesText,{minutesText=it},label={Text("Planned lunch minutes")},suffix={Text("min")},singleLine=true,enabled=!busy,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number))
             Text("Minimum ${maxOf(31,saved.minimumMinutes)} minutes · Maximum 240")
             if(minutes==null) Text("Enter whole minutes within the permitted range.",color=MaterialTheme.colorScheme.error)
             Text("Saved plan: ${saved.weeklyMinutes(week)} minutes${if(week !in saved.weeklyLunches) " · Inherited default" else ""}")
-            Text("HYPOTHETICAL PREVIEW · Not saved",style=MaterialTheme.typography.titleMedium)
+            HorizontalDivider()
+            Text("UNSAVED PREVIEW",style=MaterialTheme.typography.titleMedium,color=MaterialTheme.colorScheme.primary)
+            val employer=shifts!!.filter { it.date in week..week.plusDays(6) }
+            val reported=employer.mapNotNull { it.employerNetMinutes }
+            Text(if(employer.isNotEmpty() && reported.size==employer.size) "Employer scheduled paid hours: ${Duration.ofMinutes(reported.sum().toLong()).display()}"
+                else "Employer paid hours: ${reported.size} of ${employer.size} shifts reported",style=MaterialTheme.typography.bodySmall)
             if(plan!=null) {
-                Text("Actual worked: ${plan.worked.display()}\nProjected remaining: ${plan.futurePaid.display()}\nProjected weekly total: ${plan.projected.display()}")
+                Text("Actual worked: ${plan.worked.display()}")
+                Text("Projected remaining: ${plan.futurePaid.display()}")
+                Text("Projected weekly total: ${plan.projected.display()}",style=MaterialTheme.typography.titleMedium)
                 Text("Target: ${target.target.display()}\nRemaining paid time to target: ${plan.remaining.display()}")
                 if(!plan.shortfall.isZero) Text("Shortfall: ${plan.shortfall.display()} of additional paid work needed. Extra work is not assumed.")
                 if(!plan.excess.isZero) Text("Projected excess: ${plan.excess.display()}")

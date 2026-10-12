@@ -108,7 +108,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }) { padding ->
                     NavHost(nav, startDestination = "Dashboard", modifier = Modifier.padding(padding)) {
-                        composable("Dashboard") { DashboardScreen(data, vm, busy, openAnalytics={ nav.navigate("Analytics") { launchSingleTop = true } },openPaychecks={ nav.navigate("Paychecks/${com.shifthud.domain.pay.workWeekFor(java.time.LocalDate.now()).start}") }) }
+                        composable("Dashboard") { DashboardScreen(data, vm, busy, openSchedule={nav.selectTab("Schedule")}, openAnalytics={ nav.navigate("Analytics") { launchSingleTop = true } },openPaychecks={ nav.navigate("Paychecks/${com.shifthud.domain.pay.workWeekFor(java.time.LocalDate.now()).start}") }) }
                         composable("Analytics") {
                             val analytics: com.shifthud.ui.analytics.AnalyticsViewModel = viewModel(factory = object : ViewModelProvider.Factory {
                                 @Suppress("UNCHECKED_CAST")

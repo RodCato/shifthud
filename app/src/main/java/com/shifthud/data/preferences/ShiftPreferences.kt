@@ -15,7 +15,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 
 private val Context.shiftPreferences by preferencesDataStore(name = "shift_preferences")
-class ShiftPreferences(context: Context, private val onChanged: suspend () -> Unit = {}) {
+class ShiftPreferences(context: Context, private val onPlanningChanged: suspend (java.time.LocalDate) -> Unit = {},
+    private val onChanged: suspend () -> Unit = {}) {
     val debugSettings = context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
     internal val store = context.shiftPreferences
     private val lunchThreshold = intPreferencesKey("lunch_threshold_minutes")
@@ -72,11 +73,15 @@ class ShiftPreferences(context: Context, private val onChanged: suspend () -> Un
     val weeklyPlannerSettings = store.data.map(::weeklyPlanner)
     suspend fun setWeeklyLunch(week: java.time.LocalDate, minutes: Int) {
         require(week.dayOfWeek == java.time.DayOfWeek.SATURDAY)
+        var changed=false
         store.edit { p ->
-            val next = weeklyPlanner(p).withWeek(week, minutes)
+            val previous=weeklyPlanner(p)
+            val next = previous.withWeek(week, minutes)
+            changed=previous.weeklyMinutes(week)!=next.weeklyMinutes(week)
             p[weeklyLunchKey] = encodeWeeklyLunches(next.weeklyLunches)
         }
-        // Planning has no timekeeping side effects. Consumers observe the preferences flow.
+        // Refresh planner alerts without invoking auto-lunch reconciliation or modifying punches.
+        if(changed) withContext(NonCancellable) { onPlanningChanged(week) }
     }
     suspend fun setPlanner(settings: com.shifthud.domain.planner.PlannerSettings) {
         store.edit { it[plannerKey] = encodePlanner(settings) }

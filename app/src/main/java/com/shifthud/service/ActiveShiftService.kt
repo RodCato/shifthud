@@ -29,6 +29,7 @@ class ActiveShiftService : Service() {
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notifications.ongoing(),
             if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
         isRunning = true
+        runningService = this
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -76,6 +77,7 @@ class ActiveShiftService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() {
         isRunning = false
+        if(runningService===this) runningService=null
         scope.cancel()
         wake.close()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -83,6 +85,10 @@ class ActiveShiftService : Service() {
     }
 
     companion object {
+        @Volatile private var runningService: ActiveShiftService? = null
+        /** Wake an existing loop; never start a service as a side effect of a planning edit. */
+        fun requestRefresh() { runningService?.wake?.trySend(Unit) }
+
         @Volatile var isRunning = false
             private set
         const val CHANNEL_ID = "active_shift_updates"
