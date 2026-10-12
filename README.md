@@ -767,3 +767,7 @@ Schedule now shows employer scheduled hours, actual paid time, personal projecti
 ### MVP-006C.2: final weekly UI cleanup
 
 Dashboard keeps a compact weekly countdown and projection, with assumptions under **View Planning Details**. Weekly lunch editing remains in Schedule. Scheduled-hour labels distinguish employer-reported, estimated and partially estimated totals; metadata counts stay in details. See [rounding notes and acceptance checks](docs/UI-CLEANUP-006C2.md).
+
+### MVP-006C.3: smart lunch alerts
+
+Notifications & Garmin → **Lunch Alerts** adds a 31-minute minimum reminder, optional active-workweek planned reminder, configurable 1–120 minute snooze and optional repeats. These reuse the existing lunch channel and never change punches. Existing automatic lunch completion remains separate. See [timing limits, recovery and physical Garmin acceptance](docs/SMART-LUNCH-006C3.md).

@@ -23,6 +23,7 @@
                 <action android:name="android.intent.action.TIME_SET" />
             </intent-filter>
         </receiver>
+        <receiver android:name=".notification.lunch.LunchAlertActionReceiver" android:exported="false" />
         <receiver android:name=".notification.NotificationActionReceiver" android:exported="false" />
         <service android:name=".service.ActiveShiftService" android:exported="false"
             android:stopWithTask="false" android:foregroundServiceType="specialUse">

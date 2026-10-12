@@ -204,6 +204,9 @@ class ShiftNotifications(private val context: Context) {
     suspend fun refresh() = mutex.withLock {
         createChannels()
         val app = context.applicationContext as ShiftHudApplication
+        try { app.lunchAlerts.refresh() }
+        catch(e:kotlinx.coroutines.CancellationException) { throw e }
+        catch(e:Exception) { Log.w("ShiftHUDLunch","Lunch alert refresh deferred",e) }
         val snapshot = app.repository.snapshot()
         val session = snapshot.session
         val now = Instant.now()

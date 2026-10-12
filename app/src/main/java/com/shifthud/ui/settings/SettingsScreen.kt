@@ -46,6 +46,7 @@ import com.shifthud.ui.*
                     entries.forEach { entry -> key(entry.id) { when(entry.id) {
                         "backup" -> com.shifthud.backup.BackupSettingsSection()
                         "history" -> OutlinedButton(onClick=openHistoricalImport) { Text("Historical Data Import") }
+                        "lunchAlerts" -> LunchAlertsSection()
                         "upcoming" -> UpcomingSettingsSection()
                         "tests" -> NotificationTestCenterSection()
                         "rates" -> PayRateSettings(data,vm,busy)
