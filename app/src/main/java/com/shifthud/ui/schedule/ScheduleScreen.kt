@@ -24,6 +24,7 @@ import java.time.*
     val target by app.preferences.weeklyTargetSettings.collectAsState(initial=null)
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var deletingId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var lunchWeek by rememberSaveable { mutableStateOf<Long?>(null) }
     val today = data.now.atZone(ZoneId.systemDefault()).toLocalDate()
     var selectedWeek by rememberSaveable { mutableStateOf(scheduleWeek(today).start.toEpochDay()) }
     val week=scheduleWeek(LocalDate.ofEpochDay(selectedWeek))
@@ -49,7 +50,7 @@ import java.time.*
         if(data.loaded && settings!=null && targetSettings!=null && loadedRecords!=null) {
             val summary=schedulePlanning(week,scheduledWeek,loadedRecords,settings,targetSettings.target,data.now,zone,data.pay.rates)
             SchedulePlanningSummary(summary,settings.weeklyMinutes(week.start),locale)
-            com.shifthud.ui.settings.LunchPlanControl(vm,busy,week.start,"EDIT WEEKLY LUNCH PLAN")
+            OutlinedButton(onClick={lunchWeek=week.start.toEpochDay()},enabled=!busy) { Text("EDIT WEEKLY LUNCH PLAN") }
         } else Text("Loading weekly planning…")
         } }
         item { Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -89,6 +90,9 @@ import java.time.*
                 } }
             }
         }
+    }
+    lunchWeek?.let { epoch ->
+        com.shifthud.ui.settings.LunchPlanDialog(vm,busy,LocalDate.ofEpochDay(epoch)) { lunchWeek=null }
     }
     editingId?.let { id ->
         val existing = data.schedule.firstOrNull { it.id == id }

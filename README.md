@@ -763,3 +763,7 @@ Schedule now filters to a selected Saturday–Friday week, keeps legacy lunch me
 ### MVP-006C.1: Schedule weekly planning
 
 Schedule now shows employer scheduled hours, actual paid time, personal projections and target differences for the selected week. **EDIT WEEKLY LUNCH PLAN** opens that same week in the existing planner. Missing employer hours are explicitly estimated using existing lunch rules. See [behavior and acceptance checks](docs/SCHEDULE-PLANNING-006C1.md).
+
+### MVP-006C.2: final weekly UI cleanup
+
+Dashboard keeps a compact weekly countdown and projection, with assumptions under **View Planning Details**. Weekly lunch editing remains in Schedule. Scheduled-hour labels distinguish employer-reported, estimated and partially estimated totals; metadata counts stay in details. See [rounding notes and acceptance checks](docs/UI-CLEANUP-006C2.md).

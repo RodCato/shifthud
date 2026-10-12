@@ -76,11 +76,13 @@ class UiRefinementTest {
         ui.onNodeWithText("PAYCHECKS & SCREENSHOT IMPORT").performScrollTo().performClick()
         ui.runOnIdle { Assert.assertTrue(analytics && paychecks) }
     }
-    @Test fun offDutyExposesClockInAndPlanner() {
+    @Test fun offDutyExposesClockInAndScheduleInsteadOfLunchEditor() {
         ui.setContent { ShiftHudTheme { DashboardScreen(data(),vm(),false) } }
         ui.onNodeWithText("CLOCK IN — UNSCHEDULED").assertIsDisplayed()
-        ui.onNodeWithText("Edit Lunch Plan").performScrollTo().performClick()
-        ui.onNodeWithText("Planned lunch minutes").assertExists()
+        ui.onNodeWithText("Edit Lunch Plan").assertDoesNotExist()
+        ui.onNodeWithText("VIEW SCHEDULE").assertHasClickAction()
+        ui.onNodeWithText("View Planning Details").performScrollTo().performClick()
+        ui.onNodeWithText("Planned lunch:",substring=true).assertExists()
     }
     @Test fun scheduleExpansionEditAndDeleteConfirmation() {
         val today=LocalDate.now()

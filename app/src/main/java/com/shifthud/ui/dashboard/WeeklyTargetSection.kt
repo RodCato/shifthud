@@ -26,41 +26,39 @@ import java.time.format.DateTimeFormatter
     val zone = ZoneId.systemDefault()
     val records = (listOfNotNull(data.session) + data.pay.sessions).distinctBy { it.id }
     val plan = clockOutPlan(records,data.schedule,settings.target,planning,data.now,zone)
-    var details by remember { mutableStateOf(false) }
+
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(if(plan.liveFinalDay) "${settings.target.display()} TARGET" else "WEEKLY HOURS", style = MaterialTheme.typography.titleMedium)
-            Text("Actual worked: ${plan.worked.display()}",style=MaterialTheme.typography.titleMedium)
-            Text("Target: ${settings.target.display()}")
-            Text(if(plan.reached) "Weekly target reached." else "Paid time still needed: ${plan.remaining.display()}")
+            Text("WEEKLY HOURS", style = MaterialTheme.typography.titleMedium)
+            Text("Worked: ${plan.worked.display()} / ${settings.target.display()}",style=MaterialTheme.typography.titleMedium)
             LinearProgressIndicator(progress = { (plan.worked.toMillis().toDouble()/settings.target.toMillis()).coerceIn(0.0,1.0).toFloat() }, modifier = Modifier.fillMaxWidth())
-            Text("Planned lunch: ${planning.weeklyMinutes(data.now.atZone(zone).toLocalDate())}m")
-            val week=com.shifthud.domain.pay.workWeekFor(data.now.atZone(zone).toLocalDate())
-            val employer=data.schedule.filter { it.date in week }
-            if(employer.isNotEmpty()) {
-                val known=employer.mapNotNull { it.employerNetMinutes }
-                Text(if(known.size==employer.size) "Employer scheduled paid hours: ${Duration.ofMinutes(known.sum().toLong()).display()}"
-                    else "Employer paid hours: ${known.size} of ${employer.size} shifts reported")
-            }
-            Text("Personal projected total: ${plan.projected.display()}",style=MaterialTheme.typography.titleMedium)
-            if(!plan.excess.isZero) Text("Schedule exceeds target by ${plan.excess.display()}. Discuss an earlier departure.",color=MaterialTheme.colorScheme.error)
-            if(!plan.shortfall.isZero) Text("Projected shortfall: ${plan.shortfall.display()}")
+            Text(if(plan.reached) "Weekly target reached." else "Remaining: ${plan.remaining.countdownLabel()}")
+            Text("Projected total: ${plan.projected.display()}",style=MaterialTheme.typography.titleMedium)
+            if(!plan.excess.isZero) Text("Projected excess: ${plan.excess.excessLabel()}",color=MaterialTheme.colorScheme.error)
+            if(!plan.shortfall.isZero) Text("Projected shortfall: ${plan.shortfall.countdownLabel()}")
             plan.clockOut?.let {
                 val seconds = if(it.atZone(zone).second == 0 && it.nano == 0) "" else ":ss"
                 val pattern = if(android.text.format.DateFormat.is24HourFormat(context)) "EEEE · HH:mm$seconds" else "EEEE · h:mm$seconds a"
                 Text("Estimated final-day clock-out:\n${it.atZone(zone).format(DateTimeFormatter.ofPattern(pattern,locale))}",style=MaterialTheme.typography.titleMedium)
-                Text(if(plan.lunchRemaining.isZero) "No further lunch assumed in the final shift." else "Includes ${plan.lunchRemaining.display()} of future unpaid lunch in the final shift.",style=MaterialTheme.typography.bodySmall)
             }
             if(data.session?.state == ShiftState.ON_LUNCH) Text("Paid time paused during lunch. Estimate updates when lunch ends.")
 
-            Text("Personal projection · Confirm schedule completeness and manager approval.",style=MaterialTheme.typography.bodySmall)
-            com.shifthud.ui.settings.LunchPlanControl(vm,busy)
-            TextButton(onClick={details=!details}) { Text(if(details) "HIDE PLANNING DETAILS" else "PLANNING DETAILS") }
-            if(details) {
+            com.shifthud.ui.components.ExpandableSection("View Planning Details","Sources and assumptions") {
+                val week=com.shifthud.domain.pay.workWeekFor(data.now.atZone(zone).toLocalDate())
+                val summary=com.shifthud.ui.schedule.schedulePlanning(week,data.schedule,records,planning,settings.target,data.now,zone)
+                Text(summary.scheduledLabel())
+                Text(summary.metadataLabel())
+                Text("Planned lunch: ${planning.weeklyMinutes(week.start)}m · Edit in Schedule")
+                Text("Actual worked: ${plan.worked.display()}")
+                plan.clockOut?.let {
+                    Text(if(plan.lunchRemaining.isZero) "No further lunch assumed in the final shift." else "Includes ${plan.lunchRemaining.display()} of future unpaid lunch in the final shift.")
+                }
                 Text("Projected remaining: ${plan.futurePaid.display()}")
                 plan.issues.forEach { Text(it,style=MaterialTheme.typography.bodySmall) }
                 Text("Confirm that the week’s saved schedule is complete.",style=MaterialTheme.typography.bodySmall)
                 Text("Completed: ${plan.completed.display()}\nActive paid work: ${plan.activePaid.display()}\nFuture scheduled paid work: ${plan.futurePaid.display()}")
+                Text(PLANNING_ROUNDING_NOTE,style=MaterialTheme.typography.bodySmall)
+                Text("Manager approval is required for early departure.",style=MaterialTheme.typography.bodySmall)
                 Text("Planning estimate only. Employer timecard is authoritative. No punches or schedules are changed.",style=MaterialTheme.typography.bodySmall)
             }
         }

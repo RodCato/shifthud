@@ -25,7 +25,7 @@ import java.time.format.DateTimeFormatter
     OutlinedButton(onClick={open=true},enabled=!busy) { Text(label) }
     if(open) LunchPlanDialog(vm,busy,initialWeek) { open=false }
 }
-@Composable private fun LunchPlanDialog(vm:ShiftViewModel,busy:Boolean,initialWeek:LocalDate?,close:()->Unit) {
+@Composable internal fun LunchPlanDialog(vm:ShiftViewModel,busy:Boolean,initialWeek:LocalDate?,close:()->Unit) {
     val context=LocalContext.current
     val app=context.applicationContext as ShiftHudApplication
     val settings by app.preferences.weeklyPlannerSettings.collectAsState(initial=null)
@@ -60,17 +60,20 @@ import java.time.format.DateTimeFormatter
             Text("Saved plan: ${saved.weeklyMinutes(week)} minutes${if(week !in saved.weeklyLunches) " · Inherited default" else ""}")
             HorizontalDivider()
             Text("UNSAVED PREVIEW",style=MaterialTheme.typography.titleMedium,color=MaterialTheme.colorScheme.primary)
-            val employer=shifts!!.filter { it.date in week..week.plusDays(6) }
-            val reported=employer.mapNotNull { it.employerNetMinutes }
-            Text(if(employer.isNotEmpty() && reported.size==employer.size) "Employer scheduled paid hours: ${Duration.ofMinutes(reported.sum().toLong()).display()}"
-                else "Employer paid hours: ${reported.size} of ${employer.size} shifts reported",style=MaterialTheme.typography.bodySmall)
+            val summary=com.shifthud.ui.schedule.schedulePlanning(workWeekFor(week),shifts!!,records!!,saved,target.target,previewNow,zone)
+            Text(summary.scheduledLabel(),style=MaterialTheme.typography.bodySmall)
+            com.shifthud.ui.components.ExpandableSection("Scheduled Hours Details","Sources and assumptions") {
+                Text(summary.metadataLabel())
+                Text("Missing employer hours use legacy/default lunch estimates. Personal projections use the selected weekly lunch plan.")
+                Text(PLANNING_ROUNDING_NOTE)
+            }
             if(plan!=null) {
                 Text("Actual worked: ${plan.worked.display()}")
                 Text("Projected remaining: ${plan.futurePaid.display()}")
                 Text("Projected weekly total: ${plan.projected.display()}",style=MaterialTheme.typography.titleMedium)
-                Text("Target: ${target.target.display()}\nRemaining paid time to target: ${plan.remaining.display()}")
-                if(!plan.shortfall.isZero) Text("Shortfall: ${plan.shortfall.display()} of additional paid work needed. Extra work is not assumed.")
-                if(!plan.excess.isZero) Text("Projected excess: ${plan.excess.display()}")
+                Text("Target: ${target.target.display()}\nRemaining paid time to target: ${plan.remaining.countdownLabel()}")
+                if(!plan.shortfall.isZero) Text("Shortfall: ${plan.shortfall.countdownLabel()} of additional paid work needed. Extra work is not assumed.")
+                if(!plan.excess.isZero) Text("Projected excess: ${plan.excess.excessLabel()}")
                 Text("Recommended final-day clock-out: ${plan.clockOut?.atZone(zone)?.format(fmt) ?: "Unavailable — review schedule"}")
                 plan.issues.forEach { Text(it,style=MaterialTheme.typography.bodySmall) }
             }
