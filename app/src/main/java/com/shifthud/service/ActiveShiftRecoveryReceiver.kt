@@ -16,6 +16,9 @@ class ActiveShiftRecoveryReceiver : BroadcastReceiver() {
             try {
                 withTimeout(8_000) {
                     val app = context.applicationContext as ShiftHudApplication
+                    try { app.lunchAlerts.refresh() }
+                    catch(e:CancellationException) { throw e }
+                    catch(e:Exception) { Log.w("ShiftHUDLunch","Lunch recovery deferred",e) }
                     if (requiresActiveRefresh(app.repository.snapshot().session?.state)) ActiveShiftService.start(context)
                 }
             } catch (e: Exception) { Log.w("ShiftHUDRecovery", "Recovery deferred until next app/widget interaction", e) }

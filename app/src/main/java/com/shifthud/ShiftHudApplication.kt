@@ -26,15 +26,20 @@ class ShiftHudApplication : Application() {
     }
 
     val upcoming: com.shifthud.notification.upcoming.UpcomingReminders by lazy { com.shifthud.notification.upcoming.UpcomingReminders(this, schedule = { repository.schedule.first() }) }
-    val notifications by lazy { com.shifthud.notification.ShiftNotifications(this) }
+    val lunchAlerts: com.shifthud.notification.lunch.LunchAlerts by lazy { com.shifthud.notification.lunch.LunchAlerts(this) }
+    val notifications: com.shifthud.notification.ShiftNotifications by lazy { com.shifthud.notification.ShiftNotifications(this) }
     val payRates by lazy { com.shifthud.data.preferences.PayRatePreferences(this) }
     val engine by lazy { ShiftEngine() }
     internal val database by lazy { Room.databaseBuilder(this, ShiftDatabase::class.java, "shifthud.db").addMigrations(com.shifthud.data.local.MIGRATION_1_2, com.shifthud.data.local.MIGRATION_2_3, com.shifthud.data.local.MIGRATION_3_4, com.shifthud.data.local.MIGRATION_4_5, com.shifthud.data.local.MIGRATION_5_6, com.shifthud.data.local.MIGRATION_6_7, com.shifthud.data.local.MIGRATION_7_8).build() }
     val widgetRefresh by lazy { WidgetRefresh(this) }
-    val repository by lazy { ShiftRepository(database, engine, onChanged = { widgetRefresh.refresh() }, onHistoricalChanged = { widgetRefresh.redrawHistorical() }, autoLunchSettings = { preferences.autoLunchSettings.first() }, onSessionDeleted = { notifications.forgetSession(it) }, onScheduleChanged = { upcoming.reschedule(debounce = true) }, plannerSettings = { preferences.weeklyPlannerSettings.first() }) }
+    val repository: ShiftRepository by lazy { ShiftRepository(database, engine, onChanged = { widgetRefresh.refresh() }, onHistoricalChanged = { widgetRefresh.redrawHistorical() }, autoLunchSettings = { preferences.autoLunchSettings.first() }, onSessionDeleted = { notifications.forgetSession(it) }, onScheduleChanged = { upcoming.reschedule(debounce = true) }, plannerSettings = { preferences.weeklyPlannerSettings.first() }) }
     val payroll by lazy { com.shifthud.data.repository.PayrollRepository(database) }
     val quickFind by lazy { com.shifthud.data.repository.QuickFindRepository(database, onChanged = { widgetRefresh.refresh() }) }
-    val preferences by lazy { ShiftPreferences(this, onChanged = { widgetRefresh.refresh() }, onPlanningChanged = { week ->
+    val preferences: ShiftPreferences by lazy { ShiftPreferences(this, onChanged = { widgetRefresh.refresh() }, onPlanningChanged = { week ->
+        try { lunchAlerts.refresh() }
+        catch(e:kotlinx.coroutines.CancellationException) { throw e }
+        catch(e:Exception) { android.util.Log.w("ShiftHUDLunch","Planning reminder refresh deferred",e) }
+        com.shifthud.service.ActiveShiftService.requestRefresh()
         if(week==com.shifthud.domain.pay.workWeekFor(java.time.LocalDate.now()).start) {
             try { notifications.planningChanged() }
             catch(e:Exception) { android.util.Log.w("ShiftHUDPlanner","Notification refresh deferred to active refresh",e) }

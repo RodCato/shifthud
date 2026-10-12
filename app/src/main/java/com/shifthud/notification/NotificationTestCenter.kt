@@ -15,6 +15,9 @@ import com.shifthud.notification.upcoming.*
 
 /** Only implemented production channels. IDs are reserved exclusively for manual tests. */
 enum class TestNotificationChannel(val label: String, val channelId: String, val testId: Int, val title: String, val body: String) {
+    MINIMUM_LUNCH("Minimum lunch alert", ShiftNotifications.WARNING_CHANNEL, 2005, "ShiftHUD — Lunch Minimum Test", "Test: your 31-minute lunch minimum is complete."),
+    PLANNED_LUNCH("Planned lunch alert", ShiftNotifications.WARNING_CHANNEL, 2006, "ShiftHUD — Planned Lunch Test", "Test: your planned lunch duration is complete."),
+    LUNCH_SNOOZE("Lunch snooze alert", ShiftNotifications.WARNING_CHANNEL, 2007, "ShiftHUD — Lunch Snooze Test", "Test: your snooze is over. Check your Garmin."),
     LUNCH("Lunch reminders", ShiftNotifications.WARNING_CHANNEL, 2001, "ShiftHUD · Lunch Test", "Test lunch alert — check your Garmin."),
     SHIFT_END("Shift end reminders", ShiftNotifications.END_CHANNEL, 2002, "ShiftHUD · Shift End Test", "Test shift-end alert — check your Garmin."),
     WEEKLY("Weekly hours reminders", ShiftNotifications.WEEKLY_CHANNEL, 2003, "ShiftHUD · Weekly Hours Test", "Test 40-hour alert — check your Garmin."),

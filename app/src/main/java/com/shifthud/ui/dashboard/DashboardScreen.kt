@@ -56,6 +56,7 @@ import java.time.*
                 ShiftState.ON_LUNCH -> {
                     Text("ON LUNCH — ${durations.lunch.display()}", style = MaterialTheme.typography.headlineSmall)
                     Button(onClick = { vm.endLunch(session) }, enabled = !busy) { Text("END LUNCH") }
+                    LunchAlertStatus(session,data.now)
                     Text("Paid: ${durations.paid.display()}")
                     session.autoLunchEndTarget?.let { Text("Expected return: ${it.atZone(zone).toLocalTime().format(timeFormat)} · Auto estimate") }
                     gross?.let { Text("Estimated gross: ${money(it, locale)}", style = MaterialTheme.typography.titleLarge) }
