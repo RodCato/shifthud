@@ -100,7 +100,7 @@ class BackfillRepositoryTest {
             assertEquals(PUBLIX_BACKFILL.drop(1).map{it.date},latest!!.days.filter{it.paidDuration>Duration.ZERO}.map{it.date})
         } finally {job.cancelAndJoin()}
     }
-    @Test fun noAutomaticPayrollRecordsOrSchemaChange()=runBlocking {repo.importBackfill(dates,zone);assertTrue(PayrollRepository(db).paychecks.first().isEmpty());assertEquals(7,db.openHelper.readableDatabase.version)}
+    @Test fun noAutomaticPayrollRecordsOrSchemaChange()=runBlocking {repo.importBackfill(dates,zone);assertTrue(PayrollRepository(db).paychecks.first().isEmpty());assertEquals(8,db.openHelper.readableDatabase.version)}
     @Test fun persistedImportIsRecognizedAfterDatabaseReopen()=runBlocking {
         val context=RuntimeEnvironment.getApplication();val name="backfill-restart.db";context.deleteDatabase(name)
         try {repeat(2){pass->val disk=Room.databaseBuilder(context,ShiftDatabase::class.java,name).build();try {

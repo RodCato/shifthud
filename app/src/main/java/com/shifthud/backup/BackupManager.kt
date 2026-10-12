@@ -52,7 +52,7 @@ class BackupManager(private val app:ShiftHudApplication,private val fault:(Strin
         val tables=captureDatabase(db)
         val prefs=preferences.snapshot(runtime)
         val counts=JSONObject().apply{BACKUP_TABLES.forEach{put(it,tables.getJSONArray(it).length())}}
-        val manifest=JSONObject().put("format",1).put("payloadVersion",1).put("databaseVersion",7)
+        val manifest=JSONObject().put("format",1).put("payloadVersion",1).put("databaseVersion",8)
             .put("appVersion",app.packageManager.getPackageInfo(app.packageName,0).versionName?:"unknown")
             .put("preferenceCounts",JSONObject().apply{prefs.namesSet().forEach{put(it,prefs.getJSONObject(it).length())}})
             .put("soundReferences",org.json.JSONArray().apply{
@@ -77,7 +77,7 @@ class BackupManager(private val app:ShiftHudApplication,private val fault:(Strin
     }
     suspend fun validate(snapshot:BackupSnapshot,runtime:Boolean=false)=withContext(Dispatchers.IO) {
         require(snapshot.bytes().size<=BackupCrypto.MAX_BYTES){"Dataset exceeds the supported recovery size; no records were changed."}
-        require(snapshot.manifest.getInt("format")==1 && snapshot.manifest.getInt("payloadVersion")==1 && snapshot.manifest.getInt("databaseVersion")==7)
+        require(snapshot.manifest.getInt("format")==1 && snapshot.manifest.getInt("payloadVersion")==1 && snapshot.manifest.getInt("databaseVersion")==8)
         require(snapshot.data.namesSet()==setOf("tables","preferences","sequences"))
         BackupPreferences.validate(snapshot.data.getJSONObject("preferences"),runtime)
         val preferenceCounts=snapshot.manifest.getJSONObject("preferenceCounts")

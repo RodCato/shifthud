@@ -52,7 +52,7 @@ class PaystubImportPersistenceTest {
                 if(pass==0)repo.save(confirmed)
                 val saved=repo.paychecks.first().single();assertEquals(49610L,saved.netCents);assertEquals(3,saved.lines.size);assertEquals(7014L,saved.lines.sumOf{it.cents!!});assertEquals(confirmed.notes,saved.notes)
                 assertTrue(runCatching{repo.save(confirmed.copy(grossCents=1))}.isFailure);assertEquals(saved,repo.paychecks.first().single())
-                assertTrue(db.shifts().observeSessions().first().isEmpty());assertTrue(db.shifts().scheduleSnapshot().isEmpty());assertEquals(7,db.openHelper.readableDatabase.version)
+                assertTrue(db.shifts().observeSessions().first().isEmpty());assertTrue(db.shifts().scheduleSnapshot().isEmpty());assertEquals(8,db.openHelper.readableDatabase.version)
             }finally{db.close()}
         }}finally{context.deleteDatabase(name)}
     }

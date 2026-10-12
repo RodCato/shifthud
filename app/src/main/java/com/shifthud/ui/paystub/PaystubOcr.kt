@@ -14,7 +14,10 @@ import kotlin.coroutines.resumeWithException
 
 /** Images/URIs are memory-only. No uploads, persistent grants, image copies, or OCR logging. */
 class PaystubOcr(private val context:Context) {
-    suspend fun read(uri:Uri):String {
+    suspend fun read(uri:Uri, readingOrder:(List<OcrPiece>)->String = ::ocrRows):String =
+        readingOrder(readDocument(uri).lines.map { it.bounds }).take(20000)
+
+    suspend fun readDocument(uri:Uri):OcrDocument {
         val bitmap=withContext(Dispatchers.IO) {
             if(Build.VERSION.SDK_INT>=28)ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver,uri)){decoder,info,_->
                 val scale=minOf(1.0,3000.0/maxOf(info.size.width,info.size.height));decoder.setTargetSize(maxOf(1,(info.size.width*scale).toInt()),maxOf(1,(info.size.height*scale).toInt()));decoder.allocator=ImageDecoder.ALLOCATOR_SOFTWARE
@@ -44,14 +47,27 @@ class PaystubOcr(private val context:Context) {
         return withContext(NonCancellable) {
             try { suspendCancellableCoroutine { continuation ->
                 recognizer.process(InputImage.fromBitmap(bitmap,0)).addOnSuccessListener { result ->
-                    val pieces=result.textBlocks.flatMap{it.lines}.mapNotNull{line->line.boundingBox?.let{OcrPiece(line.text,it.left,it.top,it.right,it.bottom)}}
-                    continuation.resume(ocrRows(pieces).take(20000))
+                    fun piece(text:String, box:Rect?)=box?.let{OcrPiece(text,it.left,it.top,it.right,it.bottom)}
+                    val blocks=result.textBlocks.mapNotNull { block ->
+                        val bounds=piece(block.text,block.boundingBox)?:return@mapNotNull null
+                        OcrBlock(bounds,block.lines.mapNotNull { line ->
+                            val lineBounds=piece(line.text,line.boundingBox)?:return@mapNotNull null
+                            OcrLine(lineBounds,line.elements.mapNotNull{piece(it.text,it.boundingBox)})
+                        })
+                    }
+                    continuation.resume(OcrDocument(blocks))
                 }.addOnFailureListener{continuation.resumeWithException(it)}
             } } finally {recognizer.close();bitmap.recycle()}
         }
     }
 }
 data class OcrPiece(val text:String,val left:Int,val top:Int,val right:Int,val bottom:Int)
+data class OcrLine(val bounds:OcrPiece,val elements:List<OcrPiece> = emptyList())
+data class OcrBlock(val bounds:OcrPiece,val lines:List<OcrLine>)
+data class OcrDocument(val blocks:List<OcrBlock>) {
+    val lines get()=blocks.flatMap{it.lines}
+    val elements get()=lines.flatMap{it.elements.ifEmpty{listOf(it.bounds)}}
+}
 /** Join horizontally aligned OCR fragments; never select a guessed current/YTD numeric column. */
 fun ocrRows(pieces:List<OcrPiece>):String {
     val rows=mutableListOf<MutableList<OcrPiece>>()

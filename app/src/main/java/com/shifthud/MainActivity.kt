@@ -103,7 +103,7 @@ class MainActivity : ComponentActivity() {
                 Scaffold(snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
                     NavigationBar {
                         listOf("Dashboard", "Schedule", "Quick Find", "Settings").forEach { destination ->
-                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard").let { it == destination || (it == "HistoricalImport" && destination == "Settings") || ((it == "Analytics" || it.startsWith("Paychecks") || it.startsWith("PaystubImport")) && destination == "Dashboard") }, onClick = { if (destination == "Quick Find") quickFindFocusRequest++; nav.selectTab(destination) }, icon = { if (destination == "Quick Find") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_search), contentDescription = null) else Text(destination.take(1)) }, label = { Text(destination) })
+                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard").let { it == destination || (it == "ScheduleImport" && destination == "Schedule") || (it == "HistoricalImport" && destination == "Settings") || ((it == "Analytics" || it.startsWith("Paychecks") || it.startsWith("PaystubImport")) && destination == "Dashboard") }, onClick = { if (destination == "Quick Find") quickFindFocusRequest++; nav.selectTab(destination) }, icon = { if (destination == "Quick Find") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_search), contentDescription = null) else Text(destination.take(1)) }, label = { Text(destination) })
                         }
                     }
                 }) { padding ->
@@ -133,7 +133,15 @@ class MainActivity : ComponentActivity() {
                             })
                             com.shifthud.ui.paystub.PaystubImportScreen(importer,java.time.LocalDate.parse(importEntry.arguments?.getString("start")),java.time.LocalDate.parse(importEntry.arguments?.getString("end"))) {nav.popBackStack()}
                         }
-                        composable("Schedule") { ScheduleScreen(data, vm, busy) }
+                        composable("Schedule") { ScheduleScreen(data, vm, busy) { nav.navigate("ScheduleImport") } }
+                        composable("ScheduleImport") {
+                            val importer: com.shifthud.ui.scheduleimport.ScheduleImportViewModel = viewModel(factory = object : ViewModelProvider.Factory {
+                                @Suppress("UNCHECKED_CAST")
+                                override fun <T : ViewModel> create(modelClass: Class<T>, extras: androidx.lifecycle.viewmodel.CreationExtras): T =
+                                    com.shifthud.ui.scheduleimport.ScheduleImportViewModel(application as ShiftHudApplication, extras.createSavedStateHandle()) as T
+                            })
+                            com.shifthud.ui.scheduleimport.ScheduleImportScreen(importer) { nav.popBackStack() }
+                        }
                         composable("Quick Find") {
                             val quickVm: com.shifthud.ui.quickfind.QuickFindViewModel = viewModel(factory = object : ViewModelProvider.Factory {
                                 @Suppress("UNCHECKED_CAST")

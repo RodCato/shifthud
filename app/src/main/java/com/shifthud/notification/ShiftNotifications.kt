@@ -224,8 +224,8 @@ class ShiftNotifications(private val context: Context) {
         }
         nextWeeklyTarget = listOfNotNull(nextWeeklyTarget,plannerNext).minOrNull()
         val currentPlan = com.shifthud.domain.planner.clockOutPlan(weeklySessions,snapshot.schedule,
-            app.preferences.weeklyTargetSettings.first().target,app.preferences.plannerSettings.first(),now,ZoneId.systemDefault())
-        if(session?.clockOut != null || session == null || !app.preferences.weeklyTargetSettings.first().enabled || app.preferences.plannerSettings.first().alerts.isEmpty()) manager.cancel(PLANNER_ID)
+            app.preferences.weeklyTargetSettings.first().target,app.preferences.weeklyPlannerSettings.first(),now,ZoneId.systemDefault())
+        if(session?.clockOut != null || session == null || !app.preferences.weeklyTargetSettings.first().enabled || app.preferences.weeklyPlannerSettings.first().alerts.isEmpty()) manager.cancel(PLANNER_ID)
         val endDecision = app.preferences.deliverShiftEnd(snapshot, now, ZoneId.systemDefault()) { event, minutes ->
             try {
                 if (manager.activeNotifications.any { it.id==PLANNER_ID && kotlin.math.abs(now.toEpochMilli()-it.postTime)<30_000 } &&

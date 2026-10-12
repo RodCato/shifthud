@@ -66,11 +66,40 @@ class ShiftPreferences(context: Context, private val onChanged: suspend () -> Un
     }
     private val plannerKey = stringPreferencesKey("clockout_planner")
     val plannerSettings = store.data.map { decodePlanner(it[plannerKey]) }
+    private val weeklyLunchKey = stringPreferencesKey("weekly_lunch_plans")
+    private fun weeklyPlanner(p: Preferences) = decodePlanner(p[plannerKey]).copy(
+        weeklyLunches = decodeWeeklyLunches(p[weeklyLunchKey]), dynamicWeekly = true)
+    val weeklyPlannerSettings = store.data.map(::weeklyPlanner)
+    suspend fun setWeeklyLunch(week: java.time.LocalDate, minutes: Int) {
+        require(week.dayOfWeek == java.time.DayOfWeek.SATURDAY)
+        store.edit { p ->
+            val next = weeklyPlanner(p).withWeek(week, minutes)
+            p[weeklyLunchKey] = encodeWeeklyLunches(next.weeklyLunches)
+        }
+        // Planning has no timekeeping side effects. Consumers observe the preferences flow.
+    }
     suspend fun setPlanner(settings: com.shifthud.domain.planner.PlannerSettings) {
         store.edit { it[plannerKey] = encodePlanner(settings) }
         withContext(NonCancellable) { onChanged() }
     }
     companion object {
+        fun encodeWeeklyLunches(values: Map<java.time.LocalDate, Int>): String = JSONObject().apply {
+            values.toSortedMap().forEach { (week, minutes) ->
+                require(week.dayOfWeek == java.time.DayOfWeek.SATURDAY && minutes in 31..240)
+                put(week.toString(), minutes)
+            }
+        }.toString()
+        fun decodeWeeklyLunches(raw: String?): Map<java.time.LocalDate, Int> {
+            if(raw == null) return emptyMap()
+            val j = JSONObject(raw)
+            return j.keys().asSequence().associate { key ->
+                val week = java.time.LocalDate.parse(key)
+                val value = j.get(key)
+                require(value is Int && value in 31..240 && week.dayOfWeek == java.time.DayOfWeek.SATURDAY)
+                week to value
+            }
+        }
+
         fun encodePlanner(s: com.shifthud.domain.planner.PlannerSettings): String = JSONObject()
             .put("alerts",JSONArray(s.alerts.sorted())).put("planned",s.plannedMinutes).put("minimum",s.minimumMinutes).put("strategy",s.strategy.name)
             .put("custom",JSONObject().apply { s.custom.toSortedMap().forEach { (date,minutes) -> put(date.toString(),minutes) } }).toString()
@@ -88,13 +117,13 @@ class ShiftPreferences(context: Context, private val onChanged: suspend () -> Un
         post: (Int, String, com.shifthud.domain.planner.ClockOutPlan) -> Boolean): Instant? {
         var next: Instant? = null
         store.edit { p ->
-            val settings = decodePlanner(p[plannerKey]); val weekly = weeklySettings(p)
+            val settings = weeklyPlanner(p); val weekly = weeklySettings(p)
             val plan = com.shifthud.domain.planner.clockOutPlan(sessions,schedule,weekly.target,settings,now,zone)
             val week = com.shifthud.domain.pay.workWeekFor(now.atZone(zone).toLocalDate()).start
             val key = "$week:${weekly.targetMinutes}"
             val root = p[plannerHistory]?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
             val previous = root.optJSONObject(key)
-            val signature = encodePlanner(settings) + ":" + weekly.enabled + ":" + sessions.sortedBy { it.id }.joinToString { "${it.id}:${it.correctionRevision}" }
+            val signature = encodePlanner(settings) + ":" + settings.weeklyMinutes(week) + ":" + weekly.enabled + ":" + sessions.sortedBy { it.id }.joinToString { "${it.id}:${it.correctionRevision}" }
             val old = previous?.getJSONArray("consumed")?.let { a -> (0 until a.length()).map { a.getInt(it) }.toSet() }
             val active = sessions.any { it.clockOut == null }
             val eligible = weekly.enabled && active && (plan.liveFinalDay || plan.reached) && (plan.issues.isEmpty() || plan.reached)

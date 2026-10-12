@@ -29,8 +29,10 @@ class BackupRoundTripTest {
     @After fun cleanup(){DataGate.blocked=false;File(app.noBackupFilesDir,"restore").deleteRecursively()}
     private suspend fun seed() {
         app.preferences.setPlanner(com.shifthud.domain.planner.PlannerSettings(60,31,com.shifthud.domain.planner.LunchStrategy.CUSTOM,mapOf(LocalDate.of(2026,10,9) to 45),setOf(60,30,15,0)))
+        app.preferences.setWeeklyLunch(LocalDate.of(2026,10,17),35)
+        app.preferences.setWeeklyLunch(LocalDate.of(2026,10,24),45)
         val db=app.database
-        db.shifts().save(ScheduledShiftEntity(20,LocalDate.of(2026,9,26).toEpochDay(),14400,50400,60,"Unicode café 🥥",usesGlobalLunch=true,lunchPlanApplied=true))
+        db.shifts().save(ScheduledShiftEntity(20,LocalDate.of(2026,9,26).toEpochDay(),14400,50400,60,"Unicode café 🥥",usesGlobalLunch=true,lunchPlanApplied=true,employerNetMinutes=480,employerLunchMinutes=60))
         com.shifthud.domain.importing.PUBLIX_BACKFILL.drop(1).forEachIndexed{i,record->
             val session=record.input.session(ZoneId.of("America/Chicago"),Instant.parse("2026-10-10T00:00:00Z"))
             db.shifts().insert(session.copy(id=31L+i,scheduledShiftId=if(i==0)20 else null,
@@ -85,13 +87,24 @@ class BackupRoundTripTest {
         seed();val old=manager.snapshot()
         old.manifest.put("databaseVersion",6)
         val row=old.data.getJSONObject("tables").getJSONArray("scheduled_shifts").getJSONObject(0)
-        row.remove("usesGlobalLunch");row.remove("lunchPlanApplied")
+        row.remove("employerNetMinutes");row.remove("employerLunchMinutes");row.remove("usesGlobalLunch");row.remove("lunchPlanApplied")
         val decoded=BackupSnapshot.decode(old.bytes())
         manager.validate(decoded)
         val upgraded=decoded.data.getJSONObject("tables").getJSONArray("scheduled_shifts").getJSONObject(0)
         assertEquals(60,upgraded.getInt("plannedLunchMinutes"));assertEquals(0,upgraded.getInt("usesGlobalLunch"))
         assertEquals(0,upgraded.getInt("lunchPlanApplied"))
         assertEquals(canonical(old.data.getJSONObject("tables").getJSONArray("paychecks")),canonical(decoded.data.getJSONObject("tables").getJSONArray("paychecks")))
+    }
+    @Test fun schemaSevenBackupUpgradesAndMissingWeeklyPreferencesInheritDefault()=runBlocking {
+        seed();val old=manager.snapshot()
+        old.manifest.put("databaseVersion",7)
+        val rows=old.data.getJSONObject("tables").getJSONArray("scheduled_shifts")
+        for(i in 0 until rows.length()) { rows.getJSONObject(i).remove("employerNetMinutes");rows.getJSONObject(i).remove("employerLunchMinutes") }
+        old.data.getJSONObject("preferences").getJSONObject("shift").remove("weekly_lunch_plans")
+        old.manifest.getJSONObject("preferenceCounts").put("shift",old.data.getJSONObject("preferences").getJSONObject("shift").length())
+        val decoded=BackupSnapshot.decode(old.bytes());manager.validate(decoded)
+        assertEquals(8,decoded.manifest.getInt("databaseVersion"))
+        assertTrue(decoded.data.getJSONObject("tables").getJSONArray("scheduled_shifts").getJSONObject(0).isNull("employerNetMinutes"))
     }
     @Test fun emptyBackupIsValidAndPreviewWritesNothing()=runBlocking {
         val before=manager.snapshot();manager.validate(BackupSnapshot.decode(before.bytes()))

@@ -26,7 +26,7 @@ data class BackupSnapshot(val manifest:JSONObject,val data:JSONObject) {
             require(envelope.namesSet()==setOf("manifest","payload"))
             val manifest=envelope.getJSONObject("manifest");val raw=envelope.getString("payload")
             require(manifest.getInt("format")==1 && manifest.getInt("payloadVersion")==1){"Unsupported backup version. Update ShiftHUD."}
-            require(manifest.getInt("databaseVersion") in 6..7){"Unsupported database schema. No data was changed."}
+            require(manifest.getInt("databaseVersion") in 6..8){"Unsupported database schema. No data was changed."}
             require(manifest.getString("sha256")==digest(raw.toByteArray())){"Backup integrity check failed."}
             Instant.parse(manifest.getString("created"));ZoneId.of(manifest.getString("zone"))
             val data=JSONObject(raw)
@@ -38,6 +38,16 @@ data class BackupSnapshot(val manifest:JSONObject,val data:JSONObject) {
                     row.put("usesGlobalLunch",0).put("lunchPlanApplied",0)
                 }
                 manifest.put("sourceDatabaseVersion",6).put("databaseVersion",7)
+            }
+            if(manifest.getInt("databaseVersion") == 7) {
+                val rows = data.getJSONObject("tables").getJSONArray("scheduled_shifts")
+                for(i in 0 until rows.length()) {
+                    val row = rows.getJSONObject(i)
+                    require(!row.has("employerNetMinutes") && !row.has("employerLunchMinutes"))
+                    row.put("employerNetMinutes", JSONObject.NULL).put("employerLunchMinutes", JSONObject.NULL)
+                }
+                if(!manifest.has("sourceDatabaseVersion")) manifest.put("sourceDatabaseVersion",7)
+                manifest.put("databaseVersion",8)
             }
             return BackupSnapshot(manifest,data)
         }

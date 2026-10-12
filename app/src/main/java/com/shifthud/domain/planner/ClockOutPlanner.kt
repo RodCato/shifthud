@@ -6,9 +6,15 @@ import java.time.*
 
 enum class LunchStrategy { FULL, SHORTER, CUSTOM }
 data class PlannerSettings(val plannedMinutes: Int = 60, val minimumMinutes: Int = 30,
-    val strategy: LunchStrategy = LunchStrategy.FULL, val custom: Map<LocalDate, Int> = emptyMap(), val alerts: Set<Int> = emptySet()) {
-    init { require(alerts.all { it in setOf(60,30,15,0) }); require(minimumMinutes in 1..240 && plannedMinutes in minimumMinutes..240); require(custom.values.all { it in minimumMinutes..240 }) }
-    fun lunch(shift: ScheduledShift, finalDate: LocalDate?): Duration = Duration.ofMinutes((if(shift.lunchPlanApplied) shift.plannedLunchMinutes ?: plannedMinutes else when(strategy) {
+    val strategy: LunchStrategy = LunchStrategy.FULL, val custom: Map<LocalDate, Int> = emptyMap(), val alerts: Set<Int> = emptySet(),
+    val weeklyLunches: Map<LocalDate, Int> = emptyMap(), val dynamicWeekly: Boolean = false) {
+    init { require(alerts.all { it in setOf(60,30,15,0) }); require(minimumMinutes in 1..240 && plannedMinutes in minimumMinutes..240); require(custom.values.all { it in 1..240 }); require(weeklyLunches.all { (date,minutes) -> date.dayOfWeek == DayOfWeek.SATURDAY && minutes in 31..240 }) }
+    fun weeklyMinutes(date: LocalDate): Int = (weeklyLunches[workWeekFor(date).start] ?: plannedMinutes).coerceIn(maxOf(31, minimumMinutes), 240)
+    fun withWeek(date: LocalDate, minutes: Int): PlannerSettings {
+        require(minutes in maxOf(31, minimumMinutes)..240)
+        return copy(weeklyLunches = weeklyLunches + (workWeekFor(date).start to minutes), dynamicWeekly = true)
+    }
+    fun lunch(shift: ScheduledShift, finalDate: LocalDate?): Duration = Duration.ofMinutes((if(dynamicWeekly) weeklyMinutes(shift.date) else if(shift.lunchPlanApplied) shift.plannedLunchMinutes ?: plannedMinutes else when(strategy) {
         LunchStrategy.FULL -> shift.plannedLunchMinutes ?: plannedMinutes
         LunchStrategy.SHORTER -> if(shift.date == finalDate) shift.plannedLunchMinutes ?: plannedMinutes else minimumMinutes
         LunchStrategy.CUSTOM -> custom[shift.date] ?: shift.plannedLunchMinutes ?: plannedMinutes
@@ -39,8 +45,9 @@ private fun paidSpans(session: WorkSession, now: Instant): List<Span> {
 }
 /** Schedules are assumptions; actual timestamp intervals always replace them. No records are mutated. */
 fun clockOutPlan(sessions: List<WorkSession>, schedule: List<ScheduledShift>, target: Duration,
-                 settings: PlannerSettings, now: Instant, zone: ZoneId): ClockOutPlan {
-    val week = workWeekFor(now.atZone(zone).toLocalDate())
+                 settings: PlannerSettings, now: Instant, zone: ZoneId, weekStart: LocalDate? = null): ClockOutPlan {
+    require(weekStart == null || weekStart.dayOfWeek == DayOfWeek.SATURDAY)
+    val week = workWeekFor(weekStart ?: now.atZone(zone).toLocalDate())
     val records = sessions.distinctBy { it.id }.filter { it.clockIn <= now && it.clockIn.atZone(zone).toLocalDate() in week }
     val completed = total(records.filter { it.clockOut != null }.flatMap { paidSpans(it,now) })
     val worked = total(records.flatMap { paidSpans(it,now) })
