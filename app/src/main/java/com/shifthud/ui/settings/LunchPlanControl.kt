@@ -20,12 +20,12 @@ import com.shifthud.ui.*
 import java.time.*
 import java.time.format.DateTimeFormatter
 
-@Composable fun LunchPlanControl(vm:ShiftViewModel,busy:Boolean) {
-    var open by remember { mutableStateOf(false) }
-    OutlinedButton(onClick={open=true},enabled=!busy) { Text("Edit Lunch Plan") }
-    if(open) LunchPlanDialog(vm,busy) { open=false }
+@Composable fun LunchPlanControl(vm:ShiftViewModel,busy:Boolean, initialWeek: LocalDate? = null, label: String = "Edit Lunch Plan") {
+    var open by androidx.compose.runtime.saveable.rememberSaveable(initialWeek) { mutableStateOf(false) }
+    OutlinedButton(onClick={open=true},enabled=!busy) { Text(label) }
+    if(open) LunchPlanDialog(vm,busy,initialWeek) { open=false }
 }
-@Composable private fun LunchPlanDialog(vm:ShiftViewModel,busy:Boolean,close:()->Unit) {
+@Composable private fun LunchPlanDialog(vm:ShiftViewModel,busy:Boolean,initialWeek:LocalDate?,close:()->Unit) {
     val context=LocalContext.current
     val app=context.applicationContext as ShiftHudApplication
     val settings by app.preferences.weeklyPlannerSettings.collectAsState(initial=null)
@@ -37,7 +37,7 @@ import java.time.format.DateTimeFormatter
     if(shifts==null || records==null) return
     val zone=ZoneId.systemDefault()
     val currentWeek=workWeekFor(data.now.atZone(zone).toLocalDate()).start
-    var weekText by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(currentWeek.toString()) }
+    var weekText by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf((initialWeek ?: currentWeek).toString()) }
     val week=LocalDate.parse(weekText)
     var minutesText by androidx.compose.runtime.saveable.rememberSaveable(weekText) { mutableStateOf(saved.weeklyMinutes(week).toString()) }
     val minutes=minutesText.toIntOrNull()?.takeIf { it in maxOf(31,saved.minimumMinutes)..240 }
