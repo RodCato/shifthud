@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
             .padding(vertical=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             leading?.invoke()
             Column(Modifier.weight(1f)) {
-                Text(title,style=MaterialTheme.typography.titleMedium)
+                Text(title,style=MaterialTheme.typography.titleMedium,fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold)
                 Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(if(open) "−" else "+",modifier=Modifier.clearAndSetSemantics {})

@@ -40,7 +40,7 @@ class UiRefinementTest {
         ui.setContent { ShiftHudTheme { SettingsScreen(data(),vm(),false) } }
         ui.onNodeWithText("Lunch threshold (minutes)").assertDoesNotExist()
         ui.onNodeWithText("Search settings").performTextInput("Garmin test")
-        ui.onNodeWithText("Notification Test Center").assertExists()
+        ui.onNodeWithText("Notification Diagnostics").performScrollTo().performClick()
         com.shifthud.notification.TestNotificationChannel.entries.forEach { ui.onNodeWithContentDescription("Test ${it.label}").assertExists() }
         ui.onNodeWithText("Search settings").performTextReplacement("backup")
         ui.onNodeWithText("Backup & Restore").performScrollTo().performClick()

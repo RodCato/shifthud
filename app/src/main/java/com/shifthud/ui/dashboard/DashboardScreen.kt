@@ -79,7 +79,7 @@ import java.time.*
         }
         WeeklyTargetSection(data,vm,busy)
         val week = estimator.weekBreakdown(data.pay.sessions, data.pay.rates, data.now, zone)
-        if(data.pay.loaded) Text("Weekly estimated gross: ${week.grossCents?.let { money(it,locale) } ?: "Unavailable"}",style=MaterialTheme.typography.titleMedium)
+        if(data.pay.loaded) com.shifthud.ui.components.Metric("Weekly estimated gross",week.grossCents?.let { money(it,locale) } ?: "Unavailable","weekly-gross")
         else Text(data.pay.error ?: "Loading weekly records…")
         com.shifthud.ui.components.ExpandableSection("Time records & history","Edit punches or add a previous shift") {
         if (data.session != null || data.pay.sessions.any { it.manuallyEntered }) {

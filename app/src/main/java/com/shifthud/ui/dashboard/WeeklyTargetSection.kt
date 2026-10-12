@@ -12,6 +12,7 @@ import com.shifthud.domain.weekly.*
 import com.shifthud.domain.planner.*
 import com.shifthud.domain.model.ShiftState
 import com.shifthud.ui.*
+import com.shifthud.ui.components.*
 import java.time.*
 import java.time.format.DateTimeFormatter
 
@@ -28,18 +29,19 @@ import java.time.format.DateTimeFormatter
     val plan = clockOutPlan(records,data.schedule,settings.target,planning,data.now,zone)
 
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("WEEKLY HOURS", style = MaterialTheme.typography.titleMedium)
-            Text("Worked: ${plan.worked.display()} / ${settings.target.display()}",style=MaterialTheme.typography.titleMedium)
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionHeading("Weekly hours")
+            Metric("Actual worked hours",plan.worked.display(),"weekly-actual",primary=true,supporting="of ${settings.target.display()} target")
             LinearProgressIndicator(progress = { (plan.worked.toMillis().toDouble()/settings.target.toMillis()).coerceIn(0.0,1.0).toFloat() }, modifier = Modifier.fillMaxWidth())
             Text(if(plan.reached) "Weekly target reached." else "Remaining: ${plan.remaining.countdownLabel()}")
-            Text("Projected total: ${plan.projected.display()}",style=MaterialTheme.typography.titleMedium)
+            HorizontalDivider()
+            Metric("Projected weekly total",plan.projected.display(),"weekly-projected")
             if(!plan.excess.isZero) Text("Projected excess: ${plan.excess.excessLabel()}",color=MaterialTheme.colorScheme.error)
             if(!plan.shortfall.isZero) Text("Projected shortfall: ${plan.shortfall.countdownLabel()}")
             plan.clockOut?.let {
                 val seconds = if(it.atZone(zone).second == 0 && it.nano == 0) "" else ":ss"
                 val pattern = if(android.text.format.DateFormat.is24HourFormat(context)) "EEEE · HH:mm$seconds" else "EEEE · h:mm$seconds a"
-                Text("Estimated final-day clock-out:\n${it.atZone(zone).format(DateTimeFormatter.ofPattern(pattern,locale))}",style=MaterialTheme.typography.titleMedium)
+                Metric("Estimated final-day clock-out:",it.atZone(zone).format(DateTimeFormatter.ofPattern(pattern,locale)),"weekly-clock-out")
             }
             if(data.session?.state == ShiftState.ON_LUNCH) Text("Paid time paused during lunch. Estimate updates when lunch ends.")
 
@@ -49,11 +51,9 @@ import java.time.format.DateTimeFormatter
                 Text(summary.scheduledLabel())
                 Text(summary.metadataLabel())
                 Text("Planned lunch: ${planning.weeklyMinutes(week.start)}m · Edit in Schedule")
-                Text("Actual worked: ${plan.worked.display()}")
                 plan.clockOut?.let {
                     Text(if(plan.lunchRemaining.isZero) "No further lunch assumed in the final shift." else "Includes ${plan.lunchRemaining.display()} of future unpaid lunch in the final shift.")
                 }
-                Text("Projected remaining: ${plan.futurePaid.display()}")
                 plan.issues.forEach { Text(it,style=MaterialTheme.typography.bodySmall) }
                 Text("Confirm that the week’s saved schedule is complete.",style=MaterialTheme.typography.bodySmall)
                 Text("Completed: ${plan.completed.display()}\nActive paid work: ${plan.activePaid.display()}\nFuture scheduled paid work: ${plan.futurePaid.display()}")
