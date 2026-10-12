@@ -24,8 +24,8 @@ class SchedulePlanningDeviceTest {
         val restoration=androidx.compose.ui.test.junit4.StateRestorationTester(ui)
         restoration.setContent { ShiftHudTheme { ScheduleScreen(data,vm,false) } }
         ui.onNodeWithContentDescription("Next week").performClick()
-        ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("Publix scheduled: 37h 0m"))
-        ui.onNodeWithText("Publix scheduled: 37h 0m").assertIsDisplayed()
+        ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("Scheduled: 37h 0m (employer-reported)"))
+        ui.onNodeWithText("Scheduled: 37h 0m (employer-reported)").assertIsDisplayed()
         ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("EDIT WEEKLY LUNCH PLAN"))
         ui.onNodeWithText("EDIT WEEKLY LUNCH PLAN").assertHasClickAction().performClick()
         ui.onNodeWithText("Saturday–Friday: 2026-10-17 – 2026-10-23").assertExists()
@@ -36,8 +36,8 @@ class SchedulePlanningDeviceTest {
         ui.onNodeWithText("CANCEL").performScrollTo().performClick()
         ui.onNodeWithTag("schedule-list").performScrollToIndex(0)
         ui.onNodeWithContentDescription("Previous week").performClick()
-        ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("Publix scheduled: unknown — no saved shifts"))
-        ui.onNodeWithText("Publix scheduled: unknown — no saved shifts").assertExists()
+        ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("Scheduled: unknown — no saved shifts"))
+        ui.onNodeWithText("Scheduled: unknown — no saved shifts").assertExists()
     }
     @Test fun saveFromScheduleAndVerifyAfterProcessRestart()=runBlocking {
         val phase=InstrumentationRegistry.getArguments().getString("phase")
