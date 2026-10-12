@@ -24,8 +24,8 @@ class SchedulePlanningDeviceTest {
         val restoration=androidx.compose.ui.test.junit4.StateRestorationTester(ui)
         restoration.setContent { ShiftHudTheme { ScheduleScreen(data,vm,false) } }
         ui.onNodeWithContentDescription("Next week").performClick()
-        ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("Scheduled: 37h 0m (employer-reported)"))
-        ui.onNodeWithText("Scheduled: 37h 0m (employer-reported)").assertIsDisplayed()
+        ui.onNodeWithTag("schedule-list").performScrollToNode(hasTestTag("schedule-employer"))
+        ui.onNodeWithTag("schedule-employer").assertIsDisplayed().assertTextEquals("Employer-reported paid hours","37h 0m")
         ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("EDIT WEEKLY LUNCH PLAN"))
         ui.onNodeWithText("EDIT WEEKLY LUNCH PLAN").assertHasClickAction().performClick()
         ui.onNodeWithText("Saturday–Friday: 2026-10-17 – 2026-10-23").assertExists()
@@ -36,8 +36,8 @@ class SchedulePlanningDeviceTest {
         ui.onNodeWithText("CANCEL").performScrollTo().performClick()
         ui.onNodeWithTag("schedule-list").performScrollToIndex(0)
         ui.onNodeWithContentDescription("Previous week").performClick()
-        ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("Scheduled: unknown — no saved shifts"))
-        ui.onNodeWithText("Scheduled: unknown — no saved shifts").assertExists()
+        ui.onNodeWithTag("schedule-list").performScrollToNode(hasTestTag("schedule-employer"))
+        ui.onNodeWithTag("schedule-employer").assertTextEquals("Employer-reported paid hours","Unknown — no saved shifts")
     }
     @Test fun saveFromScheduleAndVerifyAfterProcessRestart()=runBlocking {
         val phase=InstrumentationRegistry.getArguments().getString("phase")
@@ -62,8 +62,8 @@ class SchedulePlanningDeviceTest {
             ui.onNodeWithText("Planned lunch minutes").performScrollTo().performTextReplacement(minutes.toString())
             ui.onNodeWithText("SAVE WEEKLY PLAN").performScrollTo().performClick()
             ui.waitUntil(5000) { ui.onAllNodesWithText("Weekly Lunch Plan").fetchSemanticsNodes().isEmpty() }
-            ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("Projected paid: $total · Target: 40h 0m"))
-            ui.onNodeWithText("Projected paid: $total · Target: 40h 0m").assertExists()
+            ui.onNodeWithTag("schedule-list").performScrollToNode(hasTestTag("schedule-projected"))
+            ui.onNodeWithTag("schedule-projected").assertTextEquals("Projected paid hours",total,"Target: 40h 0m")
         }
         assertEquals(48,app.preferences.weeklyPlannerSettings.first().weeklyMinutes(week.minusWeeks(1)))
         assertEquals(schedules,app.repository.schedule.first());assertEquals(sessions,app.repository.sessions.first());assertEquals(payroll,app.payroll.paychecks.first())

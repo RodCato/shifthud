@@ -27,8 +27,10 @@ class DashboardPlanningDeviceTest {
         restore.setContent { ShiftHudTheme { Column(Modifier.verticalScroll(rememberScrollState())) {
             WeeklyTargetSection(ShiftUiState(now=out,loaded=true,pay=PayData(loaded=true,sessions=listOf(record))),vm,false)
         } } }
-        ui.onNodeWithText("Worked: 8h 4m / 40h 0m").assertExists()
+        ui.onNodeWithTag("weekly-actual").assertTextEquals("Actual worked hours","8h 4m","of 40h 0m target")
         ui.onNodeWithText("Remaining: 31h 56m").assertExists()
+        ui.onNode(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.ProgressBarRangeInfo))
+            .assertRangeInfoEquals(androidx.compose.ui.semantics.ProgressBarRangeInfo((8*3600+4*60+30)/144000f,0f..1f))
         ui.onNodeWithText("Projected shortfall: 31h 56m").assertExists()
         ui.onNodeWithText("Edit Lunch Plan").assertDoesNotExist()
         ui.onNodeWithText("Employer hours available",substring=true).assertDoesNotExist()
@@ -46,7 +48,7 @@ class DashboardPlanningDeviceTest {
         ui.setContent { ShiftHudTheme { Column(Modifier.verticalScroll(rememberScrollState())) {
             WeeklyTargetSection(ShiftUiState(schedule=rows,now=week.atStartOfDay(ZoneId.systemDefault()).toInstant(),loaded=true,pay=PayData(loaded=true)),vm,false)
         } } }
-        ui.onNodeWithText("Projected total: 40h 20m").assertExists()
+        ui.onNodeWithTag("weekly-projected").assertTextEquals("Projected weekly total","40h 20m")
         ui.onNodeWithText("Projected excess: 20m").assertExists()
         ui.onNodeWithText("Estimated final-day clock-out:",substring=true).performScrollTo().assertIsDisplayed()
         ui.onNodeWithText("Edit Lunch Plan").assertDoesNotExist()

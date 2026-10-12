@@ -40,6 +40,7 @@ import java.time.*
     LazyColumn(Modifier.fillMaxSize().padding(16.dp).testTag("schedule-list"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
         item { Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Text("Schedule",style=MaterialTheme.typography.headlineMedium)
+        com.shifthud.ui.components.SectionHeading("Employer schedule")
         Text(week.scheduleLabel(locale),style=MaterialTheme.typography.titleMedium,modifier=Modifier.testTag("selected-schedule-week").semantics { heading() })
         Text("Saturday–Friday · ${scheduledWeek.size} scheduled shifts",style=MaterialTheme.typography.bodySmall)
         Text(completion?.summary ?: "Loading completion…",style=MaterialTheme.typography.bodyMedium,
