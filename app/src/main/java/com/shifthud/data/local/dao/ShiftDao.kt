@@ -5,6 +5,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ShiftDao {
+    @Query("SELECT * FROM work_sessions WHERE scheduledShiftId IN (:scheduleIds) ORDER BY clockIn, id")
+    fun observeScheduledSessions(scheduleIds: List<Long>): kotlinx.coroutines.flow.Flow<List<WorkSessionEntity>>
+
     @Query("SELECT * FROM work_sessions WHERE clockIn < :endExclusive AND (clockIn >= :start OR clockOut IS NULL OR clockOut > :start) ORDER BY clockIn, id")
     suspend fun importWindow(start: Long, endExclusive: Long): List<WorkSessionEntity>
     @Query("SELECT * FROM work_sessions WHERE clockIn >= :start AND clockIn < :endExclusive ORDER BY clockIn, id")

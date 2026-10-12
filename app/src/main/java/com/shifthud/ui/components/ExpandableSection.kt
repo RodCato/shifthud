@@ -9,13 +9,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 
-@Composable fun ExpandableSection(title:String, subtitle:String, forceOpen:Boolean=false, content:@Composable ColumnScope.()->Unit) {
+@Composable fun ExpandableSection(title:String, subtitle:String, forceOpen:Boolean=false, leading:(@Composable () -> Unit)?=null, content:@Composable ColumnScope.()->Unit) {
     var expanded by rememberSaveable(title) { mutableStateOf(false) }
     val open=forceOpen || expanded
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().heightIn(min=64.dp).clickable(role=Role.Button,onClickLabel=if(open) "Collapse $title" else "Expand $title") { expanded=!expanded }
             .semantics(mergeDescendants=true) { stateDescription=if(open) "Expanded" else "Collapsed" }
             .padding(vertical=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            leading?.invoke()
             Column(Modifier.weight(1f)) {
                 Text(title,style=MaterialTheme.typography.titleMedium)
                 Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)

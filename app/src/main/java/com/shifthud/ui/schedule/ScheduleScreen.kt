@@ -33,11 +33,17 @@ import java.time.*
     val recordsFlow=remember(week.start,zone) { app.repository.sessionsBetween(week.start,week.endInclusive.plusDays(1),zone) }
     val records by key(week.start,zone) { recordsFlow.collectAsState(initial=null) }
     val scheduledWeek=remember(data.schedule,week) { week.scheduleRows(data.schedule) }
+    val ids=scheduledWeek.map { it.id }
+    val linkedFlow=remember(ids) { app.repository.scheduledSessions(ids) }
+    val linkedRecords by key(ids) { linkedFlow.collectAsState(initial=null) }
+    val completion=linkedRecords?.let { scheduleCompletion(scheduledWeek,it) }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp).testTag("schedule-list"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
         item { Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Text("Schedule",style=MaterialTheme.typography.headlineMedium)
         Text(week.scheduleLabel(locale),style=MaterialTheme.typography.titleMedium,modifier=Modifier.testTag("selected-schedule-week").semantics { heading() })
         Text("Saturday–Friday · ${scheduledWeek.size} scheduled shifts",style=MaterialTheme.typography.bodySmall)
+        Text(completion?.summary ?: "Loading completion…",style=MaterialTheme.typography.bodyMedium,
+            modifier=Modifier.testTag("schedule-completion-summary"))
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
             TextButton(onClick={selectedWeek=week.moveWeeks(-1).start.toEpochDay()},modifier=Modifier.weight(1f).semantics { contentDescription="Previous week" }) { Text("‹ Previous week") }
             TextButton(onClick={selectedWeek=week.moveWeeks(1).start.toEpochDay()},modifier=Modifier.weight(1f).semantics { contentDescription="Next week" }) { Text("Next week ›") }
@@ -68,10 +74,10 @@ import java.time.*
                     Text("${date.format(dateFormat)} · ${if(worked.any{it.clockOut==null}) "Active · Unscheduled" else if(worked.isNotEmpty()) "Worked · Unscheduled" else "No shift saved"}",modifier=Modifier.padding(vertical=8.dp),style=MaterialTheme.typography.bodyMedium)
                 }
                 shifts.forEach { shift -> key(shift.id) {
-                    val linked=records.orEmpty().filter{it.scheduledShiftId==shift.id}
-                    val status=when { linked.any{it.clockOut==null}->"Active shift";linked.isNotEmpty()->"Completed work";else->"Scheduled work" }
+                    val status=completion?.states?.get(shift.id)
                     val lunch=planning?.weeklyMinutes(shift.date)
-                    com.shifthud.ui.components.ExpandableSection("${shift.date.format(dateFormat)}\n${shift.timeLabel()}",status) {
+                    com.shifthud.ui.components.ExpandableSection("${shift.date.format(dateFormat)}\n${shift.timeLabel()}",status?.label ?: "Loading completion…",
+                        leading={ status?.let { ScheduleCompletionIndicator(it) } }) {
                         Text("Date: ${shift.date.editorLabel(locale)}")
                         Text("Start: ${shift.scheduledStart.editorLabel(locale)}")
                         Text("End: ${shift.scheduledEnd.editorLabel(locale)}${if(shift.end.toLocalDate()!=shift.date) " · Next day" else ""}")
