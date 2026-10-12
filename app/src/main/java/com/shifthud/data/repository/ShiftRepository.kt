@@ -27,6 +27,8 @@ class ShiftRepository(
         dao.observeSessionsBetween(start.atStartOfDay(zone).toInstant().toEpochMilli(), endExclusive.atStartOfDay(zone).toInstant().toEpochMilli()).map { rows -> rows.map { it.model() } }
     fun scheduleBetween(start: LocalDate, endExclusive: LocalDate) =
         dao.observeScheduleBetween(start.toEpochDay(), endExclusive.toEpochDay()).map { rows -> rows.map { it.model() } }
+    /** Explicit associations, including punches outside the schedule's calendar week. */
+    fun scheduledSessions(ids: List<Long>) = dao.observeScheduledSessions(ids).map { rows -> rows.map { it.model() } }
     fun session(id: Long) = dao.observeSession(id).map { it?.model() }
     val schedule = dao.observeSchedule().map { rows -> rows.map { it.model() } }
     val sessions = dao.observeSessions().map { rows -> rows.map { it.model() } }
