@@ -22,6 +22,9 @@ data class WidgetState(
     val destination: String = "Dashboard",
     val updated: String,
     val completedLunch: CompletedLunch? = null,
+    val lunchMetric: WidgetLunch? = null,
+    val todayPaid: String? = null,
+    val weekly: WidgetWeekly? = null,
 )
 
 /** Pure presentation derived from the same engine as the Dashboard, never a second session store. */
