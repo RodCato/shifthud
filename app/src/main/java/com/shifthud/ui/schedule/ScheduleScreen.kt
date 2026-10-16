@@ -37,12 +37,15 @@ import java.time.*
     val linkedFlow=remember(ids) { app.repository.scheduledSessions(ids) }
     val linkedRecords by key(ids) { linkedFlow.collectAsState(initial=null) }
     val completion=linkedRecords?.let { scheduleCompletion(scheduledWeek,it) }
+    val summary=if(data.loaded && planning!=null && target!=null && records!=null)
+        schedulePlanning(week,scheduledWeek,records!!,planning!!,target!!.target,data.now,zone,data.pay.rates) else null
     LazyColumn(Modifier.fillMaxSize().padding(16.dp).testTag("schedule-list"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        item { Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        Text("Schedule",style=MaterialTheme.typography.headlineMedium)
-        com.shifthud.ui.components.SectionHeading("Employer schedule")
+        item { Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+            Text("Schedule",modifier=Modifier.weight(1f),style=MaterialTheme.typography.headlineMedium)
+            TextButton(onClick={editingId=0},enabled=data.loaded && !busy) { Text("ADD SHIFT") }
+        }
         Text(week.scheduleLabel(locale),style=MaterialTheme.typography.titleMedium,modifier=Modifier.testTag("selected-schedule-week").semantics { heading() })
-        Text("Saturday–Friday · ${scheduledWeek.size} scheduled shifts",style=MaterialTheme.typography.bodySmall)
         Text(completion?.summary ?: "Loading completion…",style=MaterialTheme.typography.bodyMedium,
             modifier=Modifier.testTag("schedule-completion-summary"))
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
@@ -51,18 +54,10 @@ import java.time.*
         }
         } }
         item { Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
-        val settings=planning
-        val targetSettings=target
-        val loadedRecords=records
-        if(data.loaded && settings!=null && targetSettings!=null && loadedRecords!=null) {
-            val summary=schedulePlanning(week,scheduledWeek,loadedRecords,settings,targetSettings.target,data.now,zone,data.pay.rates)
-            SchedulePlanningSummary(summary,settings.weeklyMinutes(week.start),locale)
-            OutlinedButton(onClick={lunchWeek=week.start.toEpochDay()},enabled=!busy) { Text("EDIT WEEKLY LUNCH PLAN") }
+        if(summary!=null) {
+            SchedulePlanningSummary(summary,planning!!.weeklyMinutes(week.start))
+            TextButton(onClick={lunchWeek=week.start.toEpochDay()},enabled=!busy) { Text("EDIT WEEKLY LUNCH PLAN") }
         } else Text("Loading weekly planning…")
-        } }
-        item { Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        Button(onClick={editingId=0},enabled=data.loaded && !busy) { Text("ADD SHIFT") }
-        OutlinedButton(onClick=importScreenshot,enabled=data.loaded && !busy) { Text("Import Schedule Screenshot") }
         } }
         if(!data.loaded) item { CircularProgressIndicator() }
         else {
@@ -97,6 +92,10 @@ import java.time.*
                 } }
             }
         }
+        item { Column(Modifier.fillMaxWidth()) {
+            summary?.let { SchedulePlanningDetails(it,locale) }
+            OutlinedButton(onClick=importScreenshot,enabled=data.loaded && !busy) { Text("Import Schedule Screenshot") }
+        } }
     }
     lunchWeek?.let { epoch ->
         com.shifthud.ui.settings.LunchPlanDialog(vm,busy,LocalDate.ofEpochDay(epoch)) { lunchWeek=null }

@@ -43,7 +43,8 @@ class ScheduleCompletionDeviceTest {
             ui.waitUntil(5000) { ui.onAllNodesWithText(text,substring=true).fetchSemanticsNodes().isNotEmpty() }
             ui.onNodeWithTag("schedule-completion-summary").assertTextEquals(text)
         }
-        fun row(text:String) {
+        fun row(status:String) {
+            val text="$status ·"
             ui.onNodeWithTag("schedule-list").performScrollToNode(hasText(text,substring=true))
             ui.waitUntil(5000) { ui.onAllNodesWithText(text,substring=true).fetchSemanticsNodes().isNotEmpty() }
             // TalkBack receives the status on a single expansion button, never a toggleable checkbox.
