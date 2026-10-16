@@ -14,7 +14,16 @@ import java.util.Locale
 
 @Composable internal fun SchedulePlanningSummary(summary: SchedulePlanning, minutes: Int) {
     val plan=summary.plan
-    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+    val colors=scheduleColors()
+    val targetColor=when {
+        !plan.excess.isZero -> colors.excess
+        !plan.shortfall.isZero && plan.shortfall <= java.time.Duration.ofHours(1) -> colors.attention
+        plan.shortfall.isZero -> colors.paid
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(color=MaterialTheme.colorScheme.surfaceContainer,shape=MaterialTheme.shapes.medium) {
+    Column(Modifier.fillMaxWidth().padding(8.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) {
+        Text("WEEKLY SCHEDULE",modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
         Column(Modifier.fillMaxWidth().testTag("schedule-employer").semantics(mergeDescendants=true) {}) {
             Text(if(summary.estimatedRows>0) "Scheduled paid estimate" else "Scheduled paid",modifier=Modifier.fillMaxWidth(),
                 style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -27,17 +36,18 @@ import java.util.Locale
             else -> "Employer-reported schedule hours"
         },modifier=Modifier.fillMaxWidth().testTag("schedule-hours-source"),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Projected paid: ${plan.projected.display()}",modifier=Modifier.fillMaxWidth().testTag("schedule-projected"),
-            style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
-        Text("Personal projection · Planned lunch: ${minutes}m per shift",modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
+            style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold,color=colors.paid)
+        Text("${minutes}m planned lunch per shift",modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall,color=colors.lunch)
         Text("Target: ${plan.target.display()} · " + when {
             !plan.shortfall.isZero -> "Shortfall: ${plan.shortfall.countdownLabel()}"
             !plan.excess.isZero -> "Excess: ${plan.excess.excessLabel()}"
             else -> "At weekly target"
         },modifier=Modifier.fillMaxWidth().testTag("schedule-target"),style=MaterialTheme.typography.bodyMedium,
-            color=if(!plan.excess.isZero) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-        LinearProgressIndicator(progress={ (plan.projected.toMillis().toDouble()/plan.target.toMillis()).coerceIn(0.0,1.0).toFloat() },
+            color=targetColor)
+        LinearProgressIndicator(color=targetColor,trackColor=MaterialTheme.colorScheme.surfaceContainerHighest,progress={ (plan.projected.toMillis().toDouble()/plan.target.toMillis()).coerceIn(0.0,1.0).toFloat() },
             modifier=Modifier.fillMaxWidth().testTag("schedule-progress").semantics { contentDescription="Projected paid progress toward weekly target" })
-        Text("Saved records only · Confirm the week’s schedule is complete.",modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Saved records · Confirm completeness",modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     }
 }
 

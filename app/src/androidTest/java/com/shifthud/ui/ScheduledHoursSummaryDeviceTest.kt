@@ -52,7 +52,7 @@ class ScheduledHoursSummaryDeviceTest {
             ui.onNodeWithTag("schedule-target").performScrollTo().assertTextEquals("Target: 40h 0m · Shortfall: 55m")
             ui.onNodeWithTag("schedule-progress").assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo,ProgressBarRangeInfo(2345f/2400f,0f..1f)))
             assertTrue(layout("37h 0m").layoutInput.style.fontSize>layout("Projected paid: 39h 5m").layoutInput.style.fontSize)
-            listOf("37h 0m","Scheduled paid","Projected paid: 39h 5m","Personal projection · Planned lunch: 35m per shift","Target: 40h 0m · Shortfall: 55m").forEach { assertFalse("Overflow: $it at $font",layout(it).hasVisualOverflow) }
+            listOf("37h 0m","Scheduled paid","Projected paid: 39h 5m","35m planned lunch per shift","Target: 40h 0m · Shortfall: 55m").forEach { assertFalse("Overflow: $it at $font",layout(it).hasVisualOverflow) }
             ui.onNodeWithText("Schedule Planning Details").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription,"Collapsed"))
             ui.onNodeWithText("Actual paid:",substring=true).assertDoesNotExist()
             ui.onNodeWithTag("schedule-employer").performScrollTo()

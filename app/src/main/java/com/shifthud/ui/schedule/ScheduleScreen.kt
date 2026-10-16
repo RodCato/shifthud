@@ -56,7 +56,7 @@ import java.time.*
         item { Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
         if(summary!=null) {
             SchedulePlanningSummary(summary,planning!!.weeklyMinutes(week.start))
-            TextButton(onClick={lunchWeek=week.start.toEpochDay()},enabled=!busy) { Text("EDIT WEEKLY LUNCH PLAN") }
+            TextButton(onClick={lunchWeek=week.start.toEpochDay()},enabled=!busy) { Text("EDIT WEEKLY LUNCH PLAN",modifier=Modifier.fillMaxWidth(),textAlign=androidx.compose.ui.text.style.TextAlign.Center) }
         } else Text("Loading weekly planning…")
         } }
         if(!data.loaded) item { CircularProgressIndicator() }
@@ -75,7 +75,8 @@ import java.time.*
                     val actuals=linkedRecords?.let { scheduleActuals(shift,it,lunch,data.now,zone,locale,android.text.format.DateFormat.is24HourFormat(app),summary?.daily?.get(shift.id)) }
                     com.shifthud.ui.components.ExpandableSection("${shift.date.format(dateFormat)}\n${shift.timeLabel()}",status?.label ?: "Loading completion…",
                         leading={ status?.let { ScheduleCompletionIndicator(it) } },
-                        subtitleContent={ ScheduleActualSummary(actuals) }) {
+                        subtitleContent={ ScheduleActualSummary(actuals) },
+                        titleContent={ ScheduleRowHeading(shift.date.format(dateFormat),shift.timeLabel()) }) {
                         actuals?.intervals?.forEach { Text("Lunch: $it",style=MaterialTheme.typography.bodySmall) }
                         shift.notes?.let{Text(it)}
                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -148,6 +149,14 @@ import java.time.*
 
 @Composable internal fun ScheduleActualSummary(actuals: ScheduleActuals?) {
     Text(actuals?.summary ?: "Loading completion…",modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodyMedium,
-        fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold)
-    actuals?.lunch?.let { Text(it,modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant) }
+        fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold,
+        color=if(actuals?.summary?.contains("unavailable")==true) scheduleColors().attention else scheduleColors().paid)
+    actuals?.lunch?.let { Text(it,modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall,color=scheduleColors().lunch) }
+}
+
+@Composable internal fun ScheduleRowHeading(date: String, time: String) {
+    Text(date,Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodyMedium,
+        fontWeight=androidx.compose.ui.text.font.FontWeight.Medium,color=MaterialTheme.colorScheme.onSurface)
+    Text(time,Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleMedium,
+        fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold,color=MaterialTheme.colorScheme.onSurface)
 }

@@ -34,7 +34,7 @@ class SchedulePlanningDeviceTest {
         val target=runBlocking { app.preferences.weeklyTargetSettings.first() }.target
         val expected=com.shifthud.ui.schedule.schedulePlanning(com.shifthud.ui.schedule.scheduleWeek(week),shifts,emptyList(),settings,target,data.now,ZoneId.systemDefault())
         ui.onNodeWithTag("schedule-projected").assertTextEquals("Projected paid: ${expected.plan.projected.display()}")
-        ui.onNodeWithText("Personal projection · Planned lunch: ${settings.weeklyMinutes(week)}m per shift").assertExists()
+        ui.onNodeWithText("${settings.weeklyMinutes(week)}m planned lunch per shift").assertExists()
         ui.onNodeWithTag("schedule-completion-summary").assertTextEquals("0 of 5 shifts completed")
         ui.onNodeWithTag("schedule-list").performScrollToIndex(0)
         ui.onNodeWithText("${com.shifthud.domain.calendar.recordDuration(expected.daily.getValue(1).paid!!)} projected paid").assertIsDisplayed()
