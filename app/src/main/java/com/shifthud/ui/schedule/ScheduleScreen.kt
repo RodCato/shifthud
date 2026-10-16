@@ -72,7 +72,7 @@ import java.time.*
                 shifts.forEach { shift -> key(shift.id) {
                     val status=completion?.states?.get(shift.id)
                     val lunch=planning?.weeklyMinutes(shift.date)
-                    val actuals=linkedRecords?.let { scheduleActuals(shift,it,lunch,data.now,zone,locale,android.text.format.DateFormat.is24HourFormat(app)) }
+                    val actuals=linkedRecords?.let { scheduleActuals(shift,it,lunch,data.now,zone,locale,android.text.format.DateFormat.is24HourFormat(app),summary?.daily?.get(shift.id)) }
                     com.shifthud.ui.components.ExpandableSection("${shift.date.format(dateFormat)}\n${shift.timeLabel()}",status?.label ?: "Loading completion…",
                         leading={ status?.let { ScheduleCompletionIndicator(it) } },
                         subtitleContent={ ScheduleActualSummary(actuals) }) {

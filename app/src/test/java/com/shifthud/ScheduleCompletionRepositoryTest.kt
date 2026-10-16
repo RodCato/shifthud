@@ -50,7 +50,7 @@ class ScheduleCompletionRepositoryTest {
             val reloaded=ShiftRepository(db,ShiftEngine()).scheduledSessions(listOf(1)).first()
             assertEquals(ended,reloaded.single())
             val actuals=scheduleActuals(shift,reloaded,56,ended.clockOut!!,ZoneOffset.UTC,java.util.Locale.US,false)
-            assertEquals("Completed · 2h 0m paid",actuals.summary)
+            assertEquals("Completed · 2h 0m actual paid",actuals.summary)
             assertEquals("Lunch: 12:50 AM – 1:50 AM (1h 0m)",actuals.lunch)
             assertEquals(1,scheduleCompletion(listOf(shift),reloaded).completed)
             db.shifts().deleteHistorical(1)

@@ -82,15 +82,15 @@ class UiRefinementTest {
         ui.onNodeWithText("Edit Lunch Plan").assertDoesNotExist()
         ui.onNodeWithText("VIEW SCHEDULE").assertHasClickAction()
         ui.onNodeWithText("View Planning Details").performScrollTo().performClick()
-        ui.onNodeWithText("Planned lunch:",substring=true).assertExists()
+        ui.onNode(hasText("Planned lunch:",substring=true) and hasClickAction()).assertExists()
     }
     @Test fun scheduleExpansionEditAndDeleteConfirmation() {
         val today=LocalDate.now()
         val s=ScheduledShift(990,today,LocalTime.of(4,0),LocalTime.of(13,0),60)
         ui.setContent { ShiftHudTheme { ScheduleScreen(data().copy(schedule=listOf(s)),vm(),false) } }
         ui.onNodeWithText("Edit shift").assertDoesNotExist()
-        ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("Scheduled · Planned lunch:",substring=true))
-        ui.onNodeWithText("Scheduled · Planned lunch:",substring=true).performClick()
+        ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("Planned lunch:",substring=true) and hasClickAction())
+        ui.onNode(hasText("Planned lunch:",substring=true) and hasClickAction()).performClick()
         ui.onNodeWithText("Edit shift").performScrollTo().performClick()
         ui.onNodeWithText("Override lunch minutes (blank = default)").assertDoesNotExist()
         ui.onNodeWithText("Note (optional)").assertExists()

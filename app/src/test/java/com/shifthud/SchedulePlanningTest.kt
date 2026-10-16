@@ -15,6 +15,58 @@ class SchedulePlanningTest {
     private val settings=PlannerSettings(dynamicWeekly=true).withWeek(week.start,31)
     private val shifts=(0L..4L).map { i -> ScheduledShift(i+1,week.start.plusDays(i),LocalTime.of(if(i==0L)16 else if(i==1L)10 else 8,0),LocalTime.of(if(i==0L)23 else if(i==1L)18 else 17,0),employerNetMinutes=if(i==0L)360 else if(i==1L)420 else 480) }
     private fun summary(rows:List<ScheduledShift> = shifts, records:List<WorkSession> = emptyList(), at:Instant=now, config:PlannerSettings=settings)=schedulePlanning(week,rows,records,config,Duration.ofHours(40),at,zone,DEFAULT_PAY_RATES)
+    @Test fun dailyFixtureReconcilesAndReactsToWeeklyLunch() {
+        for(minutes in listOf(35,60,31)) {
+            val result=summary(config=settings.withWeek(week.start,minutes))
+            assertEquals(listOf(420,480,540,540,540).map { Duration.ofMinutes((it-minutes).toLong()) },result.daily.values.map { it.paid })
+            assertEquals(result.plan.projected,result.daily.values.fold(Duration.ZERO) { sum,row -> sum.plus(row.paid!!) })
+            assertTrue(result.daily.values.all { it.lunch == Duration.ofMinutes(minutes.toLong()) })
+        }
+        assertEquals(Duration.ofMinutes(55),summary(config=settings.withWeek(week.start,35)).plan.shortfall)
+    }
+    @Test fun mixedActualAndFutureReconcileWithoutReplacingActualLunch() {
+        val start=now.plusSeconds(16*3600)
+        val record=WorkSession(10,1,start,start.plusSeconds(3600),start.plusSeconds(5400),start.plusSeconds(7*3600),ShiftState.COMPLETE)
+        for(minutes in listOf(35,60)) {
+            val result=summary(records=listOf(record),at=now.plusSeconds(86400),config=settings.withWeek(week.start,minutes))
+            assertEquals(Duration.ZERO,result.daily.getValue(1).paid)
+            assertEquals(result.plan.projected,result.daily.values.fold(result.plan.worked) { sum,row -> sum.plus(row.paid!!) })
+            assertEquals(Duration.ofMinutes(390),result.plan.worked)
+        }
+    }
+    @Test fun dailyUsesWholeWeekFinalDayPolicyAndSafelyClampsShortShifts() {
+        val config=PlannerSettings(strategy=LunchStrategy.SHORTER)
+        val result=summary(config=config)
+        assertEquals(result.plan.projected,result.daily.values.fold(Duration.ZERO) { sum,row -> sum.plus(row.paid!!) })
+        val short=shifts.first().copy(scheduledEnd=LocalTime.of(16,15))
+        assertEquals(Duration.ZERO,summary(listOf(short)).daily.getValue(short.id).paid)
+    }
+    @Test fun ambiguousAndMissedRowsAreUnavailableInsteadOfInventedHours() {
+        val overlap=shifts.first().copy(id=99)
+        assertNull(summary(shifts+overlap).daily.getValue(1).paid)
+        assertNull(summary(at=now.plusSeconds(8*86400)).daily.getValue(1).paid)
+        val unlinked=WorkSession(10,null,now.plusSeconds(16*3600),clockOut=now.plusSeconds(17*3600),state=ShiftState.COMPLETE)
+        assertNull(summary(records=listOf(unlinked),at=now.plusSeconds(18*3600)).daily.getValue(1).paid)
+    }
+    @Test fun activeAndLunchRemainingUseExistingPlanner() {
+        val start=now.plusSeconds(16*3600)
+        val working=WorkSession(10,1,start)
+        for(record in listOf(working,working.copy(lunchStart=start.plusSeconds(1800),state=ShiftState.ON_LUNCH))) {
+            val result=summary(records=listOf(record),at=start.plusSeconds(3600))
+            assertEquals(result.plan.projected,result.daily.values.fold(result.plan.worked) { sum,row -> sum.plus(row.paid!!) })
+        }
+    }
+    @Test fun dailyOvernightEmptyPartialAndExcessUseWeeklyRules() {
+        val overnight=ScheduledShift(99,week.endInclusive,LocalTime.of(23,0),LocalTime.of(4,0))
+        assertEquals(Duration.ofMinutes(269),summary(listOf(overnight)).daily.getValue(99).paid)
+        assertTrue(summary(emptyList()).daily.isEmpty())
+        for(rows in listOf(shifts.take(2),shifts+shifts.last().copy(id=99,date=week.start.plusDays(5)))) {
+            val result=summary(rows)
+            assertEquals(result.plan.projected,result.daily.values.fold(Duration.ZERO) { sum,row -> sum.plus(row.paid!!) })
+        }
+        val retained=shifts.first().copy(plannedLunchMinutes=1440,lunchPlanApplied=true)
+        assertEquals(Duration.ZERO,summary(listOf(retained),config=PlannerSettings()).daily.getValue(1).paid)
+    }
     @Test fun passportFixtureUsesEmployerMetadataAndAuthoritativeProjection() {
         val result=summary();assertEquals(5,result.shiftCount);assertEquals(42*60,shifts.sumOf{it.duration(zone).toMinutes()}.toInt())
         assertEquals(Duration.ofHours(37),result.employerPaid);assertEquals(0,result.estimatedRows)
