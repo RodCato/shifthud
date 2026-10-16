@@ -1,5 +1,9 @@
 package com.shifthud.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -22,10 +26,23 @@ class SchedulePlanningDeviceTest {
         val shifts=(0L..4L).map { i -> ScheduledShift(i+1,week.plusDays(i),LocalTime.of(if(i==0L)16 else if(i==1L)10 else 8,0),LocalTime.of(if(i==0L)23 else if(i==1L)18 else 17,0),employerNetMinutes=if(i==0L)360 else if(i==1L)420 else 480) }
         val data=ShiftUiState(loaded=true,now=week.minusWeeks(1).atStartOfDay(ZoneId.systemDefault()).toInstant(),schedule=shifts)
         val restoration=androidx.compose.ui.test.junit4.StateRestorationTester(ui)
-        restoration.setContent { ShiftHudTheme { ScheduleScreen(data,vm,false) } }
+        restoration.setContent { ShiftHudTheme { Surface { Box(Modifier.systemBarsPadding()) { ScheduleScreen(data,vm,false) } } } }
         ui.onNodeWithContentDescription("Next week").performClick()
         ui.onNodeWithTag("schedule-list").performScrollToNode(hasTestTag("schedule-employer"))
-        ui.onNodeWithTag("schedule-employer").assertIsDisplayed().assertTextEquals("Employer-reported paid hours","37h 0m")
+        ui.onNodeWithTag("schedule-employer").assertIsDisplayed().assertTextEquals("Scheduled paid","37h 0m")
+        val settings=runBlocking { app.preferences.weeklyPlannerSettings.first() }
+        val target=runBlocking { app.preferences.weeklyTargetSettings.first() }.target
+        val expected=com.shifthud.ui.schedule.schedulePlanning(com.shifthud.ui.schedule.scheduleWeek(week),shifts,emptyList(),settings,target,data.now,ZoneId.systemDefault())
+        ui.onNodeWithTag("schedule-projected").assertTextEquals("Projected paid: ${expected.plan.projected.display()}")
+        ui.onNodeWithText("Personal projection · Planned lunch: ${settings.weeklyMinutes(week)}m per shift").assertExists()
+        ui.onNodeWithTag("schedule-completion-summary").assertTextEquals("0 of 5 shifts completed")
+        ui.onNodeWithTag("schedule-list").performScrollToIndex(0)
+        ui.onNodeWithText("Sat, Oct 17",substring=true).assertIsDisplayed()
+        ui.onNodeWithText("Sun, Oct 18",substring=true).assertIsDisplayed()
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        java.io.File(instrumentation.targetContext.cacheDir,"scheduled-hours-week.png").outputStream().use {
+            instrumentation.uiAutomation.takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)
+        }
         ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("EDIT WEEKLY LUNCH PLAN"))
         ui.onNodeWithText("EDIT WEEKLY LUNCH PLAN").assertHasClickAction().performClick()
         ui.onNodeWithText("Saturday–Friday: 2026-10-17 – 2026-10-23").assertExists()
@@ -37,7 +54,9 @@ class SchedulePlanningDeviceTest {
         ui.onNodeWithTag("schedule-list").performScrollToIndex(0)
         ui.onNodeWithContentDescription("Previous week").performClick()
         ui.onNodeWithTag("schedule-list").performScrollToNode(hasTestTag("schedule-employer"))
-        ui.onNodeWithTag("schedule-employer").assertTextEquals("Employer-reported paid hours","Unknown — no saved shifts")
+        ui.onNodeWithTag("schedule-employer").assertTextEquals("Scheduled paid","Unknown — no saved shifts")
+        ui.onNodeWithTag("schedule-projected").assertTextEquals("Projected paid: 0m")
+        ui.onNodeWithTag("schedule-completion-summary").assertTextEquals("0 of 0 shifts completed")
     }
     @Test fun saveFromScheduleAndVerifyAfterProcessRestart()=runBlocking {
         val phase=InstrumentationRegistry.getArguments().getString("phase")
@@ -63,7 +82,7 @@ class SchedulePlanningDeviceTest {
             ui.onNodeWithText("SAVE WEEKLY PLAN").performScrollTo().performClick()
             ui.waitUntil(5000) { ui.onAllNodesWithText("Weekly Lunch Plan").fetchSemanticsNodes().isEmpty() }
             ui.onNodeWithTag("schedule-list").performScrollToNode(hasTestTag("schedule-projected"))
-            ui.onNodeWithTag("schedule-projected").assertTextEquals("Projected paid hours",total,"Target: 40h 0m")
+            ui.onNodeWithTag("schedule-projected").assertTextEquals("Projected paid: $total")
         }
         assertEquals(48,app.preferences.weeklyPlannerSettings.first().weeklyMinutes(week.minusWeeks(1)))
         assertEquals(schedules,app.repository.schedule.first());assertEquals(sessions,app.repository.sessions.first());assertEquals(payroll,app.payroll.paychecks.first())

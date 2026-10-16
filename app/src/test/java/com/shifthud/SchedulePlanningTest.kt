@@ -56,4 +56,34 @@ class SchedulePlanningTest {
         val result=schedulePlanning(week,shifts,emptyList(),settings,Duration.ofHours(40),now,zone,listOf(PayRate(LocalDate.MIN,1600),PayRate(week.start.plusDays(2),1700)))
         assertNull(result.projectedGross)
     }
+
+    @Test fun completedWeekIncludesActualLunchIntervalsAndUnscheduledWork() {
+        val start=now.plusSeconds(16*3600)
+        val first=WorkSession(10,1,start,start.plusSeconds(3600),start.plusSeconds(5400),start.plusSeconds(7200),ShiftState.COMPLETE)
+        val second=WorkSession(11,1,start.plusSeconds(7200),start.plusSeconds(4*3600),start.plusSeconds(4*3600+900),start.plusSeconds(7*3600),ShiftState.COMPLETE)
+        val unscheduled=WorkSession(12,null,start.plusSeconds(86400),clockOut=start.plusSeconds(90000),state=ShiftState.COMPLETE)
+        val result=summary(records=listOf(first,second,unscheduled),at=now.plusSeconds(7*86400))
+        assertEquals(Duration.ofMinutes(435),result.plan.projected)
+        assertEquals(result.plan.worked,result.plan.projected)
+        assertEquals(Duration.ofHours(37),result.employerPaid)
+        assertEquals(Duration.ofMinutes(1965),result.plan.shortfall)
+    }
+    @Test fun lunchChangeUpdatesOnlyPersonalProjectionAndMatchesDashboardPlanner() {
+        val at=now.plusSeconds(86400)
+        val record=WorkSession(10,1,now.plusSeconds(16*3600),clockOut=now.plusSeconds(21*3600),state=ShiftState.COMPLETE)
+        for(minutes in listOf(31,35,60)) {
+            val config=settings.withWeek(week.start,minutes)
+            val result=summary(records=listOf(record),at=at,config=config)
+            assertEquals(clockOutPlan(listOf(record),shifts,Duration.ofHours(40),config,at,zone),result.plan)
+            assertEquals(Duration.ofHours(37),result.employerPaid)
+        }
+    }
+    @Test fun aboveTargetUsesExistingExcessWithoutChangingScheduledFacts() {
+        val rows=(0L..5L).map { i -> ScheduledShift(i+1,week.start.plusDays(i),LocalTime.of(8,0),LocalTime.of(17,0),employerNetMinutes=480) }
+        val result=summary(rows)
+        assertEquals(Duration.ofHours(48),result.employerPaid)
+        assertEquals(Duration.ofMinutes(3054),result.plan.projected)
+        assertEquals(Duration.ofMinutes(654),result.plan.excess)
+        assertEquals(Duration.ZERO,result.plan.shortfall)
+    }
 }
