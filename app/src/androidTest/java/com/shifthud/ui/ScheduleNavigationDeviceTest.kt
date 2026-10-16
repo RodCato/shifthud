@@ -58,8 +58,8 @@ class ScheduleNavigationDeviceTest {
         val s=ScheduledShift(990,saturday,LocalTime.of(4,0),LocalTime.of(13,0),45)
         val vm=ShiftViewModel(app)
         ui.setContent { ShiftHudTheme { ScheduleScreen(state().copy(schedule=listOf(s)),vm,false) } }
-        ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("Scheduled"))
-        ui.onNodeWithText("Scheduled").performClick()
+        ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("Scheduled",substring=true))
+        ui.onNodeWithText("Scheduled",substring=true).performClick()
         ui.onNodeWithText("Legacy lunch value:",substring=true).assertDoesNotExist()
         ui.onNodeWithTag("schedule-list").performScrollToNode(hasText("Edit shift"))
         ui.onNodeWithText("Edit shift").performClick()

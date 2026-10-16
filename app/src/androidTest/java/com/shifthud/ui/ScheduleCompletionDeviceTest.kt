@@ -40,14 +40,14 @@ class ScheduleCompletionDeviceTest {
         }
         fun summary(text:String) {
             ui.onNodeWithTag("schedule-list").performScrollToIndex(0)
-            ui.waitUntil(5000) { ui.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+            ui.waitUntil(5000) { ui.onAllNodesWithText(text,substring=true).fetchSemanticsNodes().isNotEmpty() }
             ui.onNodeWithTag("schedule-completion-summary").assertTextEquals(text)
         }
         fun row(text:String) {
-            ui.onNodeWithTag("schedule-list").performScrollToNode(hasText(text))
-            ui.waitUntil(5000) { ui.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+            ui.onNodeWithTag("schedule-list").performScrollToNode(hasText(text,substring=true))
+            ui.waitUntil(5000) { ui.onAllNodesWithText(text,substring=true).fetchSemanticsNodes().isNotEmpty() }
             // TalkBack receives the status on a single expansion button, never a toggleable checkbox.
-            ui.onNodeWithText(text).assertIsDisplayed().assertHasClickAction()
+            ui.onNodeWithText(text,substring=true).assertIsDisplayed().assertHasClickAction()
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role,Role.Button))
                 .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.ToggleableState))
         }
@@ -56,13 +56,16 @@ class ScheduleCompletionDeviceTest {
         ui.waitForIdle();row("Working")
         runBlocking { app.database.shifts().update(session.copy(lunchStart=session.clockIn.plusSeconds(3600),state=ShiftState.ON_LUNCH).entity()) }
         ui.waitForIdle();row("On lunch")
-        val ended=session.copy(clockOut=session.clockIn.plusSeconds(7200),state=ShiftState.COMPLETE)
+        val ended=session.copy(lunchStart=session.clockIn.plusSeconds(3600),lunchEnd=session.clockIn.plusSeconds(5400),clockOut=session.clockIn.plusSeconds(7200),state=ShiftState.COMPLETE)
         runBlocking { app.database.shifts().update(ended.entity()) }
         summary("1 of 1 shifts completed");row("Completed")
-        ui.onNodeWithText("Completed").performClick()
+        ui.onNodeWithText("Completed · 1h 30m paid").assertIsDisplayed()
+        ui.onNodeWithText("(30m)",substring=true).assertIsDisplayed()
+        ui.onNodeWithText("Completed",substring=true).performClick()
         restoration.emulateSavedInstanceStateRestore()
         row("Completed")
-        ui.onNodeWithText("Completed").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription,"Expanded"))
+        ui.onNodeWithText("Completed · 1h 30m paid").assertIsDisplayed()
+        ui.onNodeWithText("Completed",substring=true).assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription,"Expanded"))
         runBlocking { app.database.shifts().deleteHistorical(session.id) }
         summary("0 of 1 shifts completed");row("Scheduled")
     }

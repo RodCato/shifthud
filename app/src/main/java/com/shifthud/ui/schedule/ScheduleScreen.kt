@@ -77,11 +77,11 @@ import java.time.*
                 shifts.forEach { shift -> key(shift.id) {
                     val status=completion?.states?.get(shift.id)
                     val lunch=planning?.weeklyMinutes(shift.date)
+                    val actuals=linkedRecords?.let { scheduleActuals(shift,it,lunch,data.now,zone,locale,android.text.format.DateFormat.is24HourFormat(app)) }
                     com.shifthud.ui.components.ExpandableSection("${shift.date.format(dateFormat)}\n${shift.timeLabel()}",status?.label ?: "Loading completion…",
-                        leading={ status?.let { ScheduleCompletionIndicator(it) } }) {
-                        Text("Date: ${shift.date.editorLabel(locale)}")
-                        Text("Start: ${shift.scheduledStart.editorLabel(locale)}")
-                        Text("End: ${shift.scheduledEnd.editorLabel(locale)}${if(shift.end.toLocalDate()!=shift.date) " · Next day" else ""}")
+                        leading={ status?.let { ScheduleCompletionIndicator(it) } },
+                        subtitleContent={ ScheduleActualSummary(actuals) }) {
+                        actuals?.intervals?.forEach { Text("Lunch: $it",style=MaterialTheme.typography.bodySmall) }
                         shift.notes?.let{Text(it)}
                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick={editingId=shift.id},enabled=!busy) { Text("Edit shift") }
@@ -145,4 +145,10 @@ import java.time.*
             }
         }
     }
+}
+
+@Composable internal fun ScheduleActualSummary(actuals: ScheduleActuals?) {
+    Text(actuals?.summary ?: "Loading completion…",modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodyMedium,
+        fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold)
+    actuals?.lunch?.let { Text(it,modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant) }
 }
