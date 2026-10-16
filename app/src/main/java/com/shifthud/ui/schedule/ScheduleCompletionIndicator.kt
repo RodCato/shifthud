@@ -14,7 +14,11 @@ import androidx.compose.ui.unit.dp
 
 /** Decorative only: the expandable row announces its textual status, without checkbox actions. */
 @Composable fun ScheduleCompletionIndicator(status: ScheduleCompletionStatus) {
-    val color=if(status==ScheduleCompletionStatus.SCHEDULED) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
+    val color=when(status) {
+        ScheduleCompletionStatus.SCHEDULED -> MaterialTheme.colorScheme.onSurfaceVariant
+        ScheduleCompletionStatus.ON_LUNCH -> scheduleColors().lunch
+        else -> scheduleColors().paid
+    }
     Canvas(Modifier.size(24.dp).clearAndSetSemantics {}) {
         val stroke=2.dp.toPx()
         when(status) {

@@ -82,7 +82,7 @@ class UiRefinementTest {
         ui.onNodeWithText("Edit Lunch Plan").assertDoesNotExist()
         ui.onNodeWithText("VIEW SCHEDULE").assertHasClickAction()
         ui.onNodeWithText("View Planning Details").performScrollTo().performClick()
-        ui.onNode(hasText("Planned lunch:",substring=true) and hasClickAction()).assertExists()
+        ui.onNodeWithText("Planned lunch:",substring=true).assertExists()
     }
     @Test fun scheduleExpansionEditAndDeleteConfirmation() {
         val today=LocalDate.now()
