@@ -25,10 +25,14 @@ import java.util.Locale
 
 class ScheduleActualsDeviceTest {
     @get:Rule val ui=createComposeRule()
-    @Test fun collapsedActualsWrapAtNarrowWidthAndLargeFont() {
+    @Test fun collapsedProjectedHoursWrapAtNarrowWidthAndLargeFont() = checkRow(true)
+    @Test fun collapsedActualsWrapAtNarrowWidthAndLargeFont() = checkRow(false)
+    private fun checkRow(projected: Boolean) {
         val shift=ScheduledShift(1,LocalDate.of(2026,10,11),LocalTime.of(7,0),LocalTime.of(16,0))
         val record=WorkSession(1,1,Instant.parse("2026-10-11T07:00:00Z"),Instant.parse("2026-10-11T12:36:00Z"),Instant.parse("2026-10-11T13:33:00Z"),Instant.parse("2026-10-11T16:00:00Z"),ShiftState.COMPLETE)
-        val actual=scheduleActuals(shift,listOf(record),56,record.clockOut!!,ZoneOffset.UTC,Locale.US,false)
+        val actual=if(projected) scheduleActuals(shift,emptyList(),35,record.clockIn.minusSeconds(3600),ZoneOffset.UTC,Locale.US,false,
+            DailySchedulePlan(Duration.ofMinutes(505),Duration.ofMinutes(35)))
+        else scheduleActuals(shift,listOf(record),56,record.clockOut!!,ZoneOffset.UTC,Locale.US,false)
         var scale by mutableStateOf(1f)
         ui.setContent {
             val density=LocalDensity.current
@@ -38,7 +42,7 @@ class ScheduleActualsDeviceTest {
                         Text("Schedule",modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.headlineMedium,color=MaterialTheme.colorScheme.onBackground)
                         Surface {
                             ExpandableSection("Sun, Oct 11\n7:00 AM – 4:00 PM",actual.summary,
-                                leading={ScheduleCompletionIndicator(ScheduleCompletionStatus.COMPLETED)},
+                                leading={ScheduleCompletionIndicator(if(projected) ScheduleCompletionStatus.SCHEDULED else ScheduleCompletionStatus.COMPLETED)},
                                 subtitleContent={ScheduleActualSummary(actual)}) {
                                 ExpandableSection("Advanced schedule details","Employer metadata and retained lunch values") { Text("Legacy lunch value: 99 minutes") }
                             }
@@ -60,7 +64,7 @@ class ScheduleActualsDeviceTest {
             }
             val instrumentation=InstrumentationRegistry.getInstrumentation()
             val image=instrumentation.uiAutomation.takeScreenshot()
-            java.io.File(instrumentation.targetContext.cacheDir,"schedule-actuals-${font.toInt()}x.png").outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
+            java.io.File(instrumentation.targetContext.cacheDir,"schedule-${if(projected) "projected" else "actuals"}-${font.toInt()}x.png").outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
         }
         ui.onNodeWithText(actual.summary).performClick()
         ui.onNodeWithText("Advanced schedule details").assertIsDisplayed()

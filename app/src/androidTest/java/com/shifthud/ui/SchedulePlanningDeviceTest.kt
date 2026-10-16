@@ -37,6 +37,7 @@ class SchedulePlanningDeviceTest {
         ui.onNodeWithText("Personal projection · Planned lunch: ${settings.weeklyMinutes(week)}m per shift").assertExists()
         ui.onNodeWithTag("schedule-completion-summary").assertTextEquals("0 of 5 shifts completed")
         ui.onNodeWithTag("schedule-list").performScrollToIndex(0)
+        ui.onNodeWithText("${com.shifthud.domain.calendar.recordDuration(expected.daily.getValue(1).paid!!)} projected paid").assertIsDisplayed()
         ui.onNodeWithText("Sat, Oct 17",substring=true).assertIsDisplayed()
         ui.onNodeWithText("Sun, Oct 18",substring=true).assertIsDisplayed()
         val instrumentation=InstrumentationRegistry.getInstrumentation()
