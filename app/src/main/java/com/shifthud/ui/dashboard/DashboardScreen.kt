@@ -14,7 +14,7 @@ import com.shifthud.domain.pay.*
 import com.shifthud.ui.*
 import java.time.*
 
-@Composable fun DashboardScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean, openAnalytics: () -> Unit = {}, openPaychecks: () -> Unit = {}, openSchedule: () -> Unit = {}) {
+@Composable fun DashboardScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean, openAnalytics: () -> Unit = {}, openPaychecks: () -> Unit = {}, openSchedule: () -> Unit = {}, openFrozenTasks: () -> Unit = {}) {
     LaunchedEffect(Unit) { vm.calendarMonth(YearMonth.now()) }
     var showWeek by remember { mutableStateOf(false) }
     var showRecords by remember { mutableStateOf(false) }
@@ -77,6 +77,7 @@ import java.time.*
         if(session?.state == ShiftState.COMPLETE) data.schedule.firstOrNull { it.start.atZone(zone).toInstant()>data.now }?.let {
             Text("Next shift: ${it.date.format(dateFormat)} ${it.timeLabel()}")
         }
+        OutlinedButton(onClick=openFrozenTasks,modifier=Modifier.fillMaxWidth()) { Text("FROZEN TASKS") }
         WeeklyTargetSection(data,vm,busy)
         val week = estimator.weekBreakdown(data.pay.sessions, data.pay.rates, data.now, zone)
         if(data.pay.loaded) com.shifthud.ui.components.Metric("Weekly estimated gross",week.grossCents?.let { money(it,locale) } ?: "Unavailable","weekly-gross")
