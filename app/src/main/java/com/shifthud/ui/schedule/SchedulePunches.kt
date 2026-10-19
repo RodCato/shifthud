@@ -4,7 +4,7 @@ import com.shifthud.domain.model.ScheduledShift
 import com.shifthud.domain.model.WorkSession
 import java.time.*
 import java.time.format.DateTimeFormatterBuilder
-import java.time.temporal.ChronoField
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 /** Display only. Multiple sessions stay separate; no same-date inference or interval bridging. */
@@ -17,8 +17,6 @@ fun schedulePunches(shift: ScheduledShift, sessions: List<WorkSession>?, zone: Z
         val builder=DateTimeFormatterBuilder()
         if(local.toLocalDate()!=shift.date) builder.appendPattern("MMM d, ")
         builder.appendPattern(if(use24Hour) "HH:mm" else "h:mm")
-        if(local.second!=0 || local.nano!=0) builder.appendPattern(":ss")
-        if(local.nano!=0) builder.appendFraction(ChronoField.NANO_OF_SECOND,0,9,true)
         if(!use24Hour) builder.appendPattern(" a")
         return local.format(builder.toFormatter(locale))
     }
@@ -33,7 +31,7 @@ fun schedulePunches(shift: ScheduledShift, sessions: List<WorkSession>?, zone: Z
         if(it<session.clockIn) "Clocked interval unavailable" else "CLOCKED: ${stamp(session.clockIn)} – ${stamp(it)}"
     } ?: "CLOCKED IN: ${stamp(session.clockIn)} · ${activeLabel(session)}"
     val single=linked.singleOrNull()
-    if(single!=null) return SchedulePunches(clocked(single),scheduled.takeUnless { single.clockIn==start && single.clockOut==end })
+    if(single!=null) return SchedulePunches(clocked(single),scheduled.takeUnless { single.clockIn.truncatedTo(ChronoUnit.MINUTES)==start.truncatedTo(ChronoUnit.MINUTES) && single.clockOut?.truncatedTo(ChronoUnit.MINUTES)==end.truncatedTo(ChronoUnit.MINUTES) })
     val active=linked.filter { it.clockOut==null }
     val primary=buildString {
         append("CLOCKED: ${linked.size} sessions · Expand for times")

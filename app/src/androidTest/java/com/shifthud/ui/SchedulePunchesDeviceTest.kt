@@ -48,6 +48,7 @@ class SchedulePunchesDeviceTest {
                         leading={ScheduleCompletionIndicator(status)},
                         titleContent={ScheduleRowHeading("Mon, Oct 12",punches.primary,punches.scheduled)},
                         subtitleContent={ScheduleActualSummary(actual)}) {
+                        PunchDiagnosticsView(punchDiagnostics(shift,records,now,ZoneOffset.UTC,Locale.US))
                         punches.sessions.forEach { Text(it,Modifier.fillMaxWidth()) }
                     }
                 } } }
@@ -76,6 +77,21 @@ class SchedulePunchesDeviceTest {
         ui.onNodeWithText("8.05 decimal hours").assertExists()
         ui.onNodeWithText("Lunch: 9:50 AM – 10:47 AM (57m)").assertExists()
         capture("different-with-lunch")
+        ui.onNodeWithText("CLOCKED: 4:00 AM – 1:00 PM").performClick()
+        ui.onNodeWithText("Punch Diagnostics").performScrollTo()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription,"Collapsed"))
+        ui.onNodeWithText("Clock in: 04:00:00").assertDoesNotExist()
+        ui.onNodeWithText("Punch Diagnostics").performClick()
+        ui.onNodeWithText("Clock in: 04:00:00").performScrollTo().assertIsDisplayed()
+        capture("diagnostics-punches")
+        ui.onNodeWithText("Actual paid duration: 08:03:00").performScrollTo().assertIsDisplayed()
+        capture("diagnostics-durations")
+        ui.runOnIdle { font=2f }
+        ui.onNodeWithText("Clock out: 13:00:00").performScrollTo().assertIsDisplayed()
+        capture("diagnostics-large-font")
+        ui.runOnIdle { font=1f }
+        ui.onNodeWithText("Punch Diagnostics").performScrollTo().performClick()
+        ui.onNodeWithText("CLOCKED: 4:00 AM – 1:00 PM").performScrollTo().performClick()
         ui.runOnIdle { decimals=false }
         ui.onNodeWithText("8.05 decimal hours").assertDoesNotExist()
         ui.runOnIdle { decimals=true; font=2f }
@@ -94,10 +110,17 @@ class SchedulePunchesDeviceTest {
         ui.onNodeWithText("Scheduled: 4:02 AM – 1:00 PM").assertExists()
         ui.onAllNodes(hasText("CLOCKED",substring=true)).assertCountEquals(0)
         capture("scheduled")
-        ui.runOnIdle { records=listOf(completed.copy(clockOut=at("11:00")),WorkSession(2,1,at("12:00"),clockOut=at("13:00"),state=ShiftState.COMPLETE)) }
+        ui.runOnIdle { records=listOf(completed.copy(clockOut=at("11:00")),WorkSession(2,1,at("12:00"),lunchStart=at("12:15"),lunchEnd=at("12:30"),clockOut=at("13:00"),state=ShiftState.COMPLETE)) }
         ui.onNodeWithText("CLOCKED: 2 sessions · Expand for times").performScrollTo().performClick()
         ui.onNodeWithText("Session 1 · CLOCKED: 4:00 AM – 11:00 AM").performScrollTo().assertIsDisplayed()
         ui.onNodeWithText("Session 2 · CLOCKED: 12:00 PM – 1:00 PM").performScrollTo().assertIsDisplayed()
         capture("multiple")
+        ui.onNodeWithText("Punch Diagnostics").performScrollTo().performClick()
+        ui.onNodeWithText("Lunch 1: 09:50:00 – 10:47:00").performScrollTo().assertIsDisplayed()
+        capture("diagnostics-lunch-one")
+        ui.onNodeWithText("Lunch 2: 12:15:00 – 12:30:00").performScrollTo().assertIsDisplayed()
+        capture("diagnostics-lunch-two")
+        ui.onNodeWithText("Linked sessions total").performScrollTo().assertIsDisplayed()
+        capture("diagnostics-multiple-total")
     }
 }
