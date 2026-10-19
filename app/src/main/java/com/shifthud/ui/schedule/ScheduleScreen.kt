@@ -73,10 +73,12 @@ import java.time.*
                     val status=completion?.states?.get(shift.id)
                     val lunch=planning?.weeklyMinutes(shift.date)
                     val actuals=linkedRecords?.let { scheduleActuals(shift,it,lunch,data.now,zone,locale,android.text.format.DateFormat.is24HourFormat(app),summary?.daily?.get(shift.id)) }
-                    com.shifthud.ui.components.ExpandableSection("${shift.date.format(dateFormat)}\n${shift.timeLabel()}",status?.label ?: "Loading completion…",
+                    val punches=schedulePunches(shift,linkedRecords,zone,locale,android.text.format.DateFormat.is24HourFormat(app))
+                    com.shifthud.ui.components.ExpandableSection(shift.date.format(dateFormat),status?.label ?: "Loading completion…",
                         leading={ status?.let { ScheduleCompletionIndicator(it) } },
                         subtitleContent={ ScheduleActualSummary(actuals) },
-                        titleContent={ ScheduleRowHeading(shift.date.format(dateFormat),shift.timeLabel()) }) {
+                        titleContent={ ScheduleRowHeading(shift.date.format(dateFormat),punches.primary,punches.scheduled) }) {
+                        punches.sessions.forEach { Text(it,modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodyMedium) }
                         actuals?.intervals?.forEach { Text("Lunch: $it",style=MaterialTheme.typography.bodySmall) }
                         shift.notes?.let{Text(it)}
                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -155,9 +157,10 @@ import java.time.*
     actuals?.lunch?.let { Text(it,modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall,color=scheduleColors().lunch) }
 }
 
-@Composable internal fun ScheduleRowHeading(date: String, time: String) {
+@Composable internal fun ScheduleRowHeading(date: String, time: String, scheduled: String? = null) {
     Text(date,Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodyMedium,
         fontWeight=androidx.compose.ui.text.font.FontWeight.Medium,color=MaterialTheme.colorScheme.onSurface)
     Text(time,Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleMedium,
         fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold,color=MaterialTheme.colorScheme.onSurface)
+    scheduled?.let { Text(it,Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant) }
 }
