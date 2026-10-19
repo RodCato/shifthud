@@ -32,10 +32,12 @@ import java.time.format.DateTimeFormatter
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionHeading("Weekly hours")
             Metric("Actual worked hours",plan.worked.display(),"weekly-actual",primary=true,supporting="of ${settings.target.display()} target")
+            com.shifthud.ui.time.DecimalHoursText(plan.worked)
             LinearProgressIndicator(progress = { (plan.worked.toMillis().toDouble()/settings.target.toMillis()).coerceIn(0.0,1.0).toFloat() }, modifier = Modifier.fillMaxWidth())
             Text(if(plan.reached) "Weekly target reached." else "Remaining: ${plan.remaining.countdownLabel()}")
             HorizontalDivider()
             Metric("Projected weekly total",plan.projected.display(),"weekly-projected")
+            com.shifthud.ui.time.DecimalHoursText(plan.projected,label="Projected: ")
             if(!plan.excess.isZero) Text("Projected excess: ${plan.excess.excessLabel()}",color=MaterialTheme.colorScheme.error)
             if(!plan.shortfall.isZero) Text("Projected shortfall: ${plan.shortfall.countdownLabel()}")
             plan.clockOut?.let {

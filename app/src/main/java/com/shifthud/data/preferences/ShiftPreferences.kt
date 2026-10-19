@@ -19,6 +19,9 @@ class ShiftPreferences(context: Context, private val onPlanningChanged: suspend 
     private val onChanged: suspend () -> Unit = {}) {
     val debugSettings = context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
     internal val store = context.shiftPreferences
+    private val decimalKey = booleanPreferencesKey("show_decimal_hours")
+    val showDecimalHours: Flow<Boolean> = store.data.map { it[decimalKey] ?: true }
+    suspend fun setShowDecimalHours(enabled: Boolean) { store.edit { it[decimalKey] = enabled } }
     private val lunchThreshold = intPreferencesKey("lunch_threshold_minutes")
     val lunchThresholdMinutes: Flow<Int> = store.data.catch { if (it is IOException) emit(emptyPreferences()) else throw it }.map { it[lunchThreshold] ?: 360 }
     suspend fun setLunchThreshold(minutes: Int) {

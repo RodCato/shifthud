@@ -9,7 +9,7 @@ class SettingsCatalogTest {
     @Test fun everyExistingControlGroupHasOneHome() {
         val entries=SETTINGS_CATEGORIES.flatMap{it.entries}.map{it.id}
         assertEquals(entries.size,entries.distinct().size)
-        assertEquals(setOf("threshold","auto","weekly","planner","lunchAlerts","upcoming","tests","end","warnings","snooze","channel","rates","paychecks","quick","backup","history","about"),entries.toSet())
+        assertEquals(setOf("decimal","threshold","auto","weekly","planner","lunchAlerts","upcoming","tests","end","warnings","snooze","channel","rates","paychecks","quick","backup","history","about"),entries.toSet())
     }
     @Test fun searchesLabelsAndRelatedWordsCaseInsensitively() {
         assertTrue("auto" in ids("AUTO lunch"));assertTrue("backup" in ids("restore"))
@@ -19,8 +19,8 @@ class SettingsCatalogTest {
         assertTrue("paychecks" in ids("screenshot"));assertTrue(ids("nonexistent controls").isEmpty())
     }
     @Test fun blankSearchIncludesAllAndCategoriesMatch() {
-        assertEquals(17,ids("   ").size)
+        assertEquals(18,ids("   ").size)
         assertTrue(ids("data management").containsAll(listOf("backup","history")))
-        assertEquals(7,SETTINGS_CATEGORIES.size)
+        assertEquals(8,SETTINGS_CATEGORIES.size)
     }
 }

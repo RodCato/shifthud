@@ -3,6 +3,9 @@ package com.shifthud.ui
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -24,11 +27,16 @@ class DashboardPlanningDeviceTest {
         val record=WorkSession(987,clockIn=start,clockOut=out,state=ShiftState.COMPLETE)
         val vm=ShiftViewModel(app)
         val restore=androidx.compose.ui.test.junit4.StateRestorationTester(ui)
-        restore.setContent { ShiftHudTheme { Column(Modifier.verticalScroll(rememberScrollState())) {
+        restore.setContent { ShiftHudTheme { Surface { Column(Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState())) {
             WeeklyTargetSection(ShiftUiState(now=out,loaded=true,pay=PayData(loaded=true,sessions=listOf(record))),vm,false)
-        } } }
+        } } } }
         ui.onNodeWithTag("weekly-actual").assertTextEquals("Actual worked hours","8h 4m","of 40h 0m target")
         ui.onNodeWithText("Remaining: 31h 56m").assertExists()
+        ui.onNodeWithText("8.08 decimal hours").assertExists()
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        java.io.File(instrumentation.targetContext.cacheDir,"decimal-dashboard.png").outputStream().use {
+            instrumentation.uiAutomation.takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)
+        }
         ui.onNode(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.ProgressBarRangeInfo))
             .assertRangeInfoEquals(androidx.compose.ui.semantics.ProgressBarRangeInfo((8*3600+4*60+30)/144000f,0f..1f))
         ui.onNodeWithText("Projected shortfall: 31h 56m").assertExists()

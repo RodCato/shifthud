@@ -151,6 +151,7 @@ import java.time.*
     Text(actuals?.summary ?: "Loading completion…",modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodyMedium,
         fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold,
         color=if(actuals?.summary?.contains("unavailable")==true) scheduleColors().attention else scheduleColors().paid)
+    com.shifthud.ui.time.DecimalHoursText(actuals?.paid)
     actuals?.lunch?.let { Text(it,modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall,color=scheduleColors().lunch) }
 }
 
