@@ -78,6 +78,7 @@ import java.time.*
                         leading={ status?.let { ScheduleCompletionIndicator(it) } },
                         subtitleContent={ ScheduleActualSummary(actuals) },
                         titleContent={ ScheduleRowHeading(shift.date.format(dateFormat),punches.primary,punches.scheduled) }) {
+                        linkedRecords?.let { PunchDiagnosticsView(punchDiagnostics(shift,it,data.now,zone,locale)) }
                         punches.sessions.forEach { Text(it,modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodyMedium) }
                         actuals?.intervals?.forEach { Text("Lunch: $it",style=MaterialTheme.typography.bodySmall) }
                         shift.notes?.let{Text(it)}

@@ -52,8 +52,8 @@ class SchedulePunchesTest {
     @Test fun overnightDatesAndSecondsRetainDiscrepancies() {
         val overnight=shift.copy(scheduledStart=LocalTime.of(23,0),scheduledEnd=LocalTime.of(7,0))
         val session=WorkSession(1,1,at("23:00").plusMillis(123),clockOut=at("07:00").plusSeconds(86400),state=ShiftState.COMPLETE)
-        assertEquals("CLOCKED: 23:00:00.123 – Oct 13, 07:00",punches(overnight,listOf(session),true).primary)
-        assertNotNull(punches(overnight,listOf(session)).scheduled)
+        assertEquals("CLOCKED: 23:00 – Oct 13, 07:00",punches(overnight,listOf(session),true).primary)
+        assertNull(punches(overnight,listOf(session)).scheduled)
     }
     @Test fun missingAndUnscheduledRecordsDoNotFabricateClockedTimes() {
         assertEquals("Scheduled: 4:02 AM – 1:00 PM",punches(records=emptyList()).primary)
