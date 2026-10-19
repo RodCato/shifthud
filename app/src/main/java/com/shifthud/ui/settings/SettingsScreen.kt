@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.shifthud.ui.*
+import kotlinx.coroutines.launch
 
 @Composable fun SettingsScreen(data: ShiftUiState, vm: ShiftViewModel, busy: Boolean, openHistoricalImport: () -> Unit = {}, openPaychecks: () -> Unit = {}, openQuickFind: () -> Unit = {}) {
     val context = LocalContext.current
@@ -29,6 +30,8 @@ import com.shifthud.ui.*
         onPauseOrDispose { }
     }
     val preferences = (context.applicationContext as ShiftHudApplication).preferences
+    val decimal by preferences.showDecimalHours.collectAsState(initial=true)
+    val displayScope=rememberCoroutineScope()
     val autoLunch by preferences.autoLunchSettings.collectAsState(initial = com.shifthud.domain.usecase.AutoLunchSettings())
     val snoozeMinutes by (context.applicationContext as ShiftHudApplication).preferences.snoozeMinutes.collectAsState(initial = 10)
     var input by rememberSaveable(data.threshold) { mutableStateOf(data.threshold.toString()) }
@@ -44,6 +47,12 @@ import com.shifthud.ui.*
             key(category.title) {
                 com.shifthud.ui.components.ExpandableSection(category.title,category.subtitle,forceOpen=query.isNotBlank()) {
                     entries.forEach { entry -> key(entry.id) { when(entry.id) {
+                        "decimal" -> {
+                            Row(Modifier.fillMaxWidth().toggleable(value=decimal,role=Role.Switch,onValueChange={displayScope.launch { preferences.setShowDecimalHours(it) }}),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Text("Show decimal hours",Modifier.weight(1f)); Switch(checked=decimal,onCheckedChange=null)
+                            }
+                            Text(com.shifthud.ui.time.DECIMAL_TIME_NOTE,style=MaterialTheme.typography.bodySmall)
+                        }
                         "backup" -> com.shifthud.backup.BackupSettingsSection()
                         "history" -> OutlinedButton(onClick=openHistoricalImport) { Text("Historical Data Import") }
                         "lunchAlerts" -> LunchAlertsSection()

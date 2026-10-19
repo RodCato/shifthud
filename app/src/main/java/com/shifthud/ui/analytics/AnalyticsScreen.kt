@@ -59,6 +59,7 @@ import java.time.format.DateTimeFormatter
             item {
                 Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     Text("Paid · ${recordDuration(result.paid)}",style=MaterialTheme.typography.headlineSmall)
+                    com.shifthud.ui.time.DecimalHoursText(result.paid)
                     Text("Est. gross · ${gross(result.grossCents)}",style=MaterialTheme.typography.titleLarge)
                     Text("${result.workedDays} worked days · ${result.completedSessions} completed sessions")
                     Text("Average / worked day · ${recordDuration(result.averagePaid)}")
@@ -85,6 +86,7 @@ import java.time.format.DateTimeFormatter
                     Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                         Text(day.date.format(DateTimeFormatter.ofPattern("EEE, MMM d",locale)),style=MaterialTheme.typography.titleMedium)
                         Text("${recordDuration(day.paidDuration)} paid · ${gross(day.estimatedGross)}")
+                        if(day.workSessions.isNotEmpty()) com.shifthud.ui.time.DecimalHoursText(day.paidDuration)
                         Text(if(day.workSessions.isEmpty()) if(day.scheduledShifts.isEmpty()) "No recorded work" else "Scheduled only · No recorded work" else "${day.workSessions.size} session(s)${if(day.hasActiveSession) " · IN PROGRESS" else " · Completed"}",style=MaterialTheme.typography.bodySmall)
                         Text("VIEW DAY DETAILS",style=MaterialTheme.typography.labelSmall)
                     }

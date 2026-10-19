@@ -32,6 +32,7 @@ import java.time.format.FormatStyle
             Text("Personal record only. Auto means an inferred lunch end; corrections do not change employer payroll.")
             if (session.manuallyEntered) Text("Manually added previous shift")
             Text("Paid ${durations.paid.display()} · Store ${durations.store.display()} · Lunch ${durations.lunch.display()}")
+            com.shifthud.ui.time.DecimalHoursText(durations.paid)
             TimeEvent.entries.forEach { event ->
                 val value = event.timestamp(session)
                 if (value == null) Text("${event.label}: Not recorded")

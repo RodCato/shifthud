@@ -31,6 +31,7 @@ import java.time.format.*
                     Text("TOTAL FOR DAY", style = MaterialTheme.typography.titleSmall)
                     Text("Paid: ${recordDuration(day.paidDuration)}\nEst. gross: ${gross(day.estimatedGross)}")
                 }
+                if(day.workSessions.size>1) com.shifthud.ui.time.DecimalHoursText(day.paidDuration)
                 day.breakdown.contributions.forEachIndexed { index, contribution ->
                     val session = contribution.session
                     key(session.id) {
@@ -39,6 +40,7 @@ import java.time.format.*
                         Text("${stamp(session.clockIn)} – ${session.clockOut?.let(::stamp) ?: "In progress"}")
                         Text(session.lunchStart?.let { "Lunch: ${stamp(it)} – ${session.lunchEnd?.let(::stamp) ?: "In progress"}" } ?: "Lunch: Not recorded")
                         Text("Paid: ${recordDuration(contribution.paid)}\nStore: ${recordDuration(durations.store)}\nLunch: ${recordDuration(durations.lunch)}\nEst. gross: ${gross(contribution.grossCents)}")
+                        com.shifthud.ui.time.DecimalHoursText(contribution.paid)
                         if (session.manuallyEntered) Text("Manually added", style = MaterialTheme.typography.labelMedium)
                         if (session.lunchEndAutomatic) Text("Lunch end inferred automatically", style = MaterialTheme.typography.labelMedium)
                         TextButton(enabled = !busy, onClick = { openRecord(session.id) }) { Text("EDIT TIME") }

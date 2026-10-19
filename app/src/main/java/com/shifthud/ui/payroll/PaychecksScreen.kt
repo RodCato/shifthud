@@ -27,6 +27,7 @@ import java.time.format.*
     val scope=rememberCoroutineScope()
     val locale=androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     val dates=DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
+    val showDecimals=com.shifthud.ui.time.showDecimalHours()
     val p=state.draft
     LaunchedEffect(p?.periodStart,p?.periodEnd){if(p!=null)list.scrollToItem(0)}
     fun moneyOrMissing(cents:Long?)=cents?.let{money(it,locale)}?:"Not entered"
@@ -49,7 +50,8 @@ import java.time.format.*
             }
             item { Section("ShiftHUD · Recorded work") {
                 val e=state.estimate!!
-                Text("Paid: ${recordDuration(e.paid)} (${decimalHours(e.paid).stripTrailingZeros().toPlainString()} decimal hours)")
+                Text("Paid: ${recordDuration(e.paid)}")
+                com.shifthud.ui.time.DecimalHoursText(e.paid)
                 Text("Estimated base gross: ${e.grossCents?.let{money(it,locale)}?:"Unavailable — missing rate history"}")
                 Text("${e.completedSessions} completed sessions · ${e.workedDays} workdays")
                 if(e.activeSessions>0)Text("Includes accrued in-progress work. Reconciliation remains incomplete.",color=MaterialTheme.colorScheme.primary)
@@ -71,6 +73,12 @@ import java.time.format.*
                     p.lines.forEach{line->Text("${line.label}: ${moneyOrMissing(line.cents)}${if(line.kind==PayrollKind.EARNING)" · included in gross" else ""}")}
                     Text("Known deduction subtotal: ${if(p.lines.any{it.kind==PayrollKind.DEDUCTION && it.cents!=null})money(r.knownDeductions,locale) else "Not entered"}")
                     Text("Reported deductions: ${r.deductions?.let{money(it,locale)}?:"Incomplete — confirm all deductions"}")
+                } }
+                if(showDecimals && p.reportedHours!=null) item { Section("Time comparison") {
+                    Text("ShiftHUD calculated: ${com.shifthud.ui.time.decimalTime(state.estimate!!.paid,locale)} decimal hours")
+                    Text("Publix reported: ${com.shifthud.ui.time.reportedTime(p.reportedHours,locale)} decimal hours")
+                    Text(com.shifthud.ui.time.timeComparison(state.estimate!!.paid,p.reportedHours,locale)!!)
+                    Text(com.shifthud.ui.time.DECIMAL_TIME_NOTE,style=MaterialTheme.typography.bodySmall)
                 } }
                 item { Section("Independent differences") {
                     Text("Employer hours − ShiftHUD hours: ${r.hoursDifference?.let(::hoursDifferenceLabel)?:"Not yet comparable"}")

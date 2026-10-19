@@ -37,6 +37,7 @@ import java.util.Locale
         },modifier=Modifier.fillMaxWidth().testTag("schedule-hours-source"),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Projected paid: ${plan.projected.display()}",modifier=Modifier.fillMaxWidth().testTag("schedule-projected"),
             style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold,color=colors.paid)
+        com.shifthud.ui.time.DecimalHoursText(plan.projected,label="Projected: ")
         Text("${minutes}m planned lunch per shift",modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall,color=colors.lunch)
         Text("Target: ${plan.target.display()} · " + when {
             !plan.shortfall.isZero -> "Shortfall: ${plan.shortfall.countdownLabel()}"
