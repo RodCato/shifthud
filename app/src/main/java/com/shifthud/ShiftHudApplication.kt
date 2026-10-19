@@ -28,6 +28,7 @@ class ShiftHudApplication : Application() {
     val upcoming: com.shifthud.notification.upcoming.UpcomingReminders by lazy { com.shifthud.notification.upcoming.UpcomingReminders(this, schedule = { repository.schedule.first() }) }
     val lunchAlerts: com.shifthud.notification.lunch.LunchAlerts by lazy { com.shifthud.notification.lunch.LunchAlerts(this) }
     val notifications: com.shifthud.notification.ShiftNotifications by lazy { com.shifthud.notification.ShiftNotifications(this) }
+    val frozenTasks by lazy { com.shifthud.frozen.FrozenTaskStore(this) }
     val payRates by lazy { com.shifthud.data.preferences.PayRatePreferences(this) }
     val engine by lazy { ShiftEngine() }
     internal val database by lazy { Room.databaseBuilder(this, ShiftDatabase::class.java, "shifthud.db").addMigrations(com.shifthud.data.local.MIGRATION_1_2, com.shifthud.data.local.MIGRATION_2_3, com.shifthud.data.local.MIGRATION_3_4, com.shifthud.data.local.MIGRATION_4_5, com.shifthud.data.local.MIGRATION_5_6, com.shifthud.data.local.MIGRATION_6_7, com.shifthud.data.local.MIGRATION_7_8).build() }
