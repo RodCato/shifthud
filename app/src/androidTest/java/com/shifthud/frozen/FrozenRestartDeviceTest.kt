@@ -22,9 +22,13 @@ class FrozenRestartDeviceTest {
                 store.setState(task.id,FrozenState.TODO)
                 store.saveDetails(task.id,task.title,task.description,"Restart note: finish Tuesday")
                 store.setState(task.id,FrozenState.CARRY_OVER)
+                store.setState(store.tasks.first()[1].id,FrozenState.COMPLETED)
             } else {
                 store.initialize();val tasks=store.tasks.first()
                 assertEquals(10,tasks.size)
+                assertEquals(FrozenState.COMPLETED,tasks[1].state)
+                assertEquals(1,groupFrozenTasks(tasks).completed.size)
+                assertEquals(1,groupFrozenTasks(tasks).carryovers.size)
                 assertEquals(FrozenState.CARRY_OVER,tasks.first().state)
                 assertEquals("Restart note: finish Tuesday",tasks.first().notes)
                 assertEquals(listOf(FrozenState.COMPLETED,FrozenState.TODO,FrozenState.CARRY_OVER),tasks.first().history.map { it.state })

@@ -1,6 +1,7 @@
 package com.shifthud.frozen
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -28,12 +29,13 @@ import java.time.format.DateTimeFormatter
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun FrozenTasksContent(tasks:List<FrozenTask>?,busy:Boolean,error:String?,clearError:()->Unit,
     back:()->Unit,changeState:(String,FrozenState)->Unit,save:(String?,String,String,String,()->Unit)->Unit) {
-    var carryOnly by rememberSaveable { mutableStateOf(false) }
+    var carryOpen by rememberSaveable { mutableStateOf(true) }
+    var completedOpen by rememberSaveable { mutableStateOf(false) }
     var editing by remember { mutableStateOf<FrozenTask?>(null) }
     var adding by rememberSaveable { mutableStateOf(false) }
     val locale=LocalConfiguration.current.locales[0]
     val date=DateTimeFormatter.ofPattern("EEE, MMM d, uuuu",locale)
-    val completed=tasks?.count { it.state==FrozenState.COMPLETED } ?: 0
+    val groups=groupFrozenTasks(tasks.orEmpty())
     val dark=androidx.compose.foundation.isSystemInDarkTheme()
     val green=MaterialTheme.colorScheme.primary
     val amber=if(dark) Color(0xFFE5BF75) else Color(0xFF795500)
@@ -50,36 +52,46 @@ import java.time.format.DateTimeFormatter
         item {
             if(tasks==null) Text(if(error==null) "Loading tasks…" else "Checklist unavailable. Reopen Frozen Tasks to retry.")
             else {
-                Text("$completed of ${tasks.size} completed · ${tasks.size-completed} remaining · ${tasks.count { it.state==FrozenState.BLOCKED }} blocked",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodyMedium)
-                FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected=!carryOnly,onClick={carryOnly=false},label={Text("All tasks",Modifier.fillMaxWidth())})
-                    FilterChip(selected=carryOnly,onClick={carryOnly=true},label={Text("Carryovers (${tasks.count { it.state==FrozenState.CARRY_OVER }})",Modifier.fillMaxWidth())})
-                    TextButton(onClick={adding=true},enabled=!busy) { Text("Add task",Modifier.fillMaxWidth()) }
-                }
+                Text("${groups.completed.size} of ${groups.total} completed · ${groups.remaining} remaining · ${groups.blocked} blocked",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodyMedium)
+                TextButton(onClick={adding=true},enabled=!busy) { Text("Add task",Modifier.fillMaxWidth()) }
             }
             Text(FROZEN_REFERENCE_NOTE,Modifier.fillMaxWidth(),color=blue,style=MaterialTheme.typography.bodySmall)
             error?.let { Text(it,color=MaterialTheme.colorScheme.error);TextButton(onClick=clearError) { Text("Dismiss message") } }
         }
-        val visible=tasks.orEmpty().filter { !carryOnly || it.state==FrozenState.CARRY_OVER }
-        if(tasks!=null && visible.isEmpty())item { Text("No carryover tasks.",Modifier.fillMaxWidth()) }
-        items(visible,key={it.id}) { task ->
+        if(tasks!=null) listOf(
+            Triple("ACTIVE TASKS",groups.active,true),
+            Triple("CARRYOVERS",groups.carryovers,carryOpen),
+            Triple("COMPLETED",groups.completed,completedOpen)
+        ).forEach { (label,rows,open) ->
+            item(key="section-$label") {
+                if(label=="ACTIVE TASKS") Text("$label (${rows.size})",Modifier.fillMaxWidth().padding(vertical=8.dp),style=MaterialTheme.typography.titleSmall)
+                else FrozenGroupHeader("$label (${rows.size})",open) {
+                    if(label=="CARRYOVERS") carryOpen=!carryOpen else completedOpen=!completedOpen
+                }
+            }
+            if(open && rows.isEmpty()) item(key="empty-$label") { Text(if(label=="CARRYOVERS") "No carryover tasks." else if(label=="COMPLETED") "No completed tasks." else "No active tasks.",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall) }
+            if(open) items(rows,key={it.id}) { task ->
             val color=when(task.state) { FrozenState.COMPLETED->green;FrozenState.BLOCKED->red;FrozenState.IN_PROGRESS,FrozenState.CARRY_OVER->amber;else->MaterialTheme.colorScheme.onSurfaceVariant }
             ExpandableSection(task.title,task.state.label,leading={
                 Checkbox(checked=task.state==FrozenState.COMPLETED,enabled=!busy,
                     onCheckedChange={changeState(task.id,if(it) FrozenState.COMPLETED else FrozenState.TODO)},
                     modifier=Modifier.semantics { contentDescription=if(task.state==FrozenState.COMPLETED) "Reopen ${task.title}" else "Complete ${task.title}" })
+            },titleContent={
+                Text(task.title,Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleMedium,
+                    color=if(task.state==FrozenState.COMPLETED) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
             },subtitleContent={
                 Text(task.state.label,Modifier.fillMaxWidth(),color=color,style=MaterialTheme.typography.bodyMedium)
-                if(task.notes.isNotBlank())Text(task.notes,Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
+                if(task.state==FrozenState.CARRY_OVER) Text("From ${task.date.format(date)}",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
             }) {
-                Text("From ${task.date.format(date)}",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
+                if(task.state!=FrozenState.CARRY_OVER) Text("From ${task.date.format(date)}",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
+                if(task.notes.isNotBlank())Text(task.notes,Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
                 Text(task.description.ifBlank { "No reference notes." },Modifier.fillMaxWidth(),color=blue,style=MaterialTheme.typography.bodyMedium)
                 FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     if(task.state!=FrozenState.COMPLETED) {
                         TextButton(onClick={changeState(task.id,FrozenState.IN_PROGRESS)},enabled=!busy && task.state!=FrozenState.IN_PROGRESS) { Text("Start task",Modifier.fillMaxWidth()) }
                         TextButton(onClick={changeState(task.id,FrozenState.BLOCKED)},enabled=!busy && task.state!=FrozenState.BLOCKED) { Text("Mark blocked",Modifier.fillMaxWidth()) }
-                        TextButton(onClick={changeState(task.id,FrozenState.CARRY_OVER)},enabled=!busy && task.state!=FrozenState.CARRY_OVER) { Text("Carry to next shift",Modifier.fillMaxWidth()) }
-                        if(task.state!=FrozenState.TODO) TextButton(onClick={changeState(task.id,FrozenState.TODO)},enabled=!busy) { Text("Return to do",Modifier.fillMaxWidth()) }
+                        TextButton(onClick={changeState(task.id,FrozenState.CARRY_OVER)},enabled=!busy && task.state!=FrozenState.CARRY_OVER) { Text("Carry to next Frozen shift",Modifier.fillMaxWidth()) }
+                        if(task.state!=FrozenState.TODO) TextButton(onClick={changeState(task.id,FrozenState.TODO)},enabled=!busy) { Text(if(task.state==FrozenState.CARRY_OVER) "Remove from carryover" else "Return to do",Modifier.fillMaxWidth()) }
                     }
                     TextButton(onClick={editing=task},enabled=!busy) { Text("Edit task / notes",Modifier.fillMaxWidth()) }
                 }
@@ -88,10 +100,22 @@ import java.time.format.DateTimeFormatter
                 }
             }
         }
+        }
     }
     if(editing!=null || adding) FrozenTaskEditor(editing,busy,error,dismiss={editing=null;adding=false},save={title,description,notes ->
         save(editing?.id,title,description,notes) { editing=null;adding=false }
     })
+}
+
+/** Stable saveable booleans live above this header, so count changes never reset expansion. */
+@Composable private fun FrozenGroupHeader(title:String,open:Boolean,toggle:()->Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable(role=Role.Button,
+        onClickLabel=if(open) "Collapse $title" else "Expand $title",onClick=toggle)
+        .semantics(mergeDescendants=true) { stateDescription=if(open) "Expanded" else "Collapsed" }
+        .padding(vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        Text(title,Modifier.weight(1f),style=MaterialTheme.typography.titleSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(if(open) "−" else "+",Modifier.clearAndSetSemantics {})
+    }
 }
 
 @Composable private fun FrozenTaskEditor(task:FrozenTask?,busy:Boolean,error:String?,dismiss:()->Unit,save:(String,String,String)->Unit) {
