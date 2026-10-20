@@ -33,10 +33,14 @@ class FrozenTasksDeviceTest {
             ui.onNodeWithText(FROZEN_TITLE).assertIsDisplayed()
         }
     }
+    @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     @Test fun taskStatesNotesCarryoverAndLargeFont() {
-        var tasks by mutableStateOf(mondayFrozenTemplate())
+        var tasks by mutableStateOf(mondayFrozenTemplate().mapIndexed { index,t -> if(index<7)t.copy(state=FrozenState.COMPLETED) else t })
         var font by mutableStateOf(1f)
-        ui.setContent {
+        lateinit var inputMode: androidx.compose.ui.input.InputModeManager
+        val restoration=androidx.compose.ui.test.junit4.StateRestorationTester(ui)
+        restoration.setContent {
+            inputMode=androidx.compose.ui.platform.LocalInputModeManager.current
             val density=LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density,font)) {
                 ShiftHudTheme { Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {
@@ -45,44 +49,67 @@ class FrozenTasksDeviceTest {
                 } }
             }
         }
+        fun show(text:String) { ui.onNode(hasScrollAction()).performScrollToNode(hasText(text)) }
+        fun click(text:String) { show(text);ui.onNodeWithText(text).performClick() }
         fun capture(name:String) {
             ui.waitForIdle()
-            val shot=InstrumentationRegistry.getInstrumentation()
-            java.io.File(shot.targetContext.cacheDir,"frozen-$name.png").outputStream().use { shot.uiAutomation.takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
             ui.onAllNodes(hasText("",substring=true),useUnmergedTree=true).fetchSemanticsNodes().filter { it.boundsInRoot.width>0 && it.boundsInRoot.height>0 }.forEach { node ->
                 node.config.getOrElseNullable(SemanticsActions.GetTextLayoutResult){null}?.action?.let { action ->
                     val layouts=mutableListOf<TextLayoutResult>();action(layouts)
-                    assertTrue("Text overflow: $name ${layouts.filter { it.hasVisualOverflow }.map { "${it.layoutInput.text}: ${it.size}, width=${it.didOverflowWidth}, height=${it.didOverflowHeight}" }}",layouts.none { it.hasVisualOverflow })
+                    assertTrue("Text overflow: $name ${layouts.filter { it.hasVisualOverflow }.map { it.layoutInput.text }}",layouts.none { it.hasVisualOverflow })
                 }
             }
             val i=InstrumentationRegistry.getInstrumentation()
-            java.io.File(i.targetContext.cacheDir,"frozen-$name.png").outputStream().use { i.uiAutomation.takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
+            java.io.File(i.targetContext.cacheDir,"frozen-d2-$name.png").outputStream().use { i.uiAutomation.takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
         }
-        capture("checklist")
-        val title=tasks.first().title
-        ui.onNodeWithContentDescription("Complete $title").performClick()
-        ui.onNodeWithContentDescription("Reopen $title").assertIsOn().performClick()
-        ui.onNodeWithText(title).performClick()
-        ui.onNodeWithText("Start task").performScrollTo().performClick()
-        ui.onNodeWithText("Mark blocked").performScrollTo().performClick()
-        ui.onNodeWithText("Edit task / notes").performScrollTo().performClick()
+        ui.onNodeWithText("7 of 10 completed · 3 remaining · 0 blocked").assertExists()
+        show("ACTIVE TASKS (3)");capture("active-first")
+        show("COMPLETED (7)")
+        ui.onNodeWithText("COMPLETED (7)").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription,"Collapsed"))
+        ui.onNodeWithContentDescription("Reopen ${tasks.first().title}").assertDoesNotExist()
+        capture("completed-collapsed")
+        click("COMPLETED (7)")
+        restoration.emulateSavedInstanceStateRestore()
+        show("COMPLETED (7)")
+        ui.onNodeWithText("COMPLETED (7)").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription,"Expanded"))
+        val first=tasks.first().title
+        show(first);capture("completed-expanded")
+        ui.onNodeWithContentDescription("Reopen $first").performClick()
+        show("ACTIVE TASKS (4)")
+        ui.onNodeWithText("6 of 10 completed · 4 remaining · 0 blocked").assertExists()
+        click(first)
+        click("Mark blocked")
+        click("Edit task / notes")
         ui.onNodeWithText("Notes / handoff").performTextInput("Scanner unavailable. Finish Tuesday.")
         ui.onNodeWithText("Save task").performClick()
         androidx.test.espresso.Espresso.closeSoftKeyboard()
-        ui.onNodeWithText("Scanner unavailable. Finish Tuesday.").performScrollTo().assertIsDisplayed()
-        capture("blocked-notes")
-        ui.onNodeWithText("Carry to next shift").performScrollTo().performClick()
-        ui.onNodeWithText("Task history").performScrollTo().performClick()
-        ui.onNodeWithText("Completed ·",substring=true).assertExists()
-        capture("history")
-        ui.onNodeWithText("Carryovers (1)").performScrollTo().performClick()
-        ui.onNodeWithText(title).assertExists()
-        ui.runOnIdle { assertEquals(10,tasks.size);assertEquals(FrozenState.CARRY_OVER,tasks.first().state);font=2f }
-        ui.onNode(hasScrollAction()).performScrollToIndex(0)
-        capture("large-font-header")
-        ui.onNode(hasScrollAction()).performScrollToNode(hasText(title))
-        ui.onNodeWithText(title).assertIsDisplayed()
-        capture("large-font-carryover")
-        ui.onNodeWithText(title).assert(SemanticsMatcher.expectValue(SemanticsProperties.Role,Role.Button))
+        click("Carry to next Frozen shift")
+        show("CARRYOVERS (1)");capture("carryover")
+        show(first)
+        ui.onNodeWithText("From Mon, Oct 19, 2026").assertExists()
+        // Group moves preserve the same task. Expand it if its saved row state is closed.
+        if(ui.onAllNodesWithText("Remove from carryover").fetchSemanticsNodes().isEmpty())click(first)
+        show("Scanner unavailable. Finish Tuesday.")
+        click("Remove from carryover")
+        show("ACTIVE TASKS (4)")
+        show(first)
+        if(ui.onAllNodesWithText("Carry to next Frozen shift").fetchSemanticsNodes().isEmpty())click(first)
+        click("Carry to next Frozen shift")
+        show(first)
+        ui.onNodeWithContentDescription("Complete $first").performClick()
+        show("COMPLETED (7)")
+        ui.onNodeWithText("COMPLETED (7)").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription,"Expanded"))
+        show(first)
+        ui.onNodeWithContentDescription("Reopen $first").performClick()
+        ui.runOnIdle { assertEquals(10,tasks.size);assertEquals(10,tasks.map { it.id }.distinct().size);assertEquals("Scanner unavailable. Finish Tuesday.",tasks.first().notes);font=2f }
+        ui.onNode(hasScrollAction()).performScrollToIndex(0);capture("large-header")
+        show("ACTIVE TASKS (4)");capture("large-active")
+        show("COMPLETED (6)")
+        ui.onNodeWithText("COMPLETED (6)").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role,Role.Button))
+        ui.runOnIdle { inputMode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard) }
+        ui.onNodeWithText("COMPLETED (6)").performSemanticsAction(SemanticsActions.RequestFocus) { it() }
+        ui.onNodeWithText("COMPLETED (6)").assertIsFocused().performKeyInput { pressKey(androidx.compose.ui.input.key.Key.Enter) }
+        ui.onNodeWithText("COMPLETED (6)").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription,"Collapsed"))
+        capture("large-completed")
     }
 }

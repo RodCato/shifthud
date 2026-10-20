@@ -76,6 +76,28 @@ class FrozenTaskStoreTest {
         assertTrue(runCatching { store.initialize() }.isFailure)
         assertEquals("not valid json",raw.data.first()[stringPreferencesKey("tasks_v1")])
     }
+    @Test fun existingCompletionCustomTasksAndExplicitCarrySurviveMidnightAndClockOut()=runBlocking {
+        store.initialize();val original=store.tasks.first()
+        store.setState(original[0].id,FrozenState.COMPLETED)
+        store.saveDetails(original[1].id,original[1].title,original[1].description,"Finish Tuesday")
+        store.setState(original[1].id,FrozenState.CARRY_OVER)
+        store.setState(original[1].id,FrozenState.CARRY_OVER)
+        store.add("Custom task","Reference","Keep me")
+        val expected=store.tasks.first()
+        val future=Clock.fixed(Instant.parse("2026-10-20T23:00:00Z"),ZoneOffset.UTC)
+        com.shifthud.domain.usecase.ShiftEngine(future).clockOut(com.shifthud.domain.model.WorkSession(clockIn=Instant.parse("2026-10-20T13:00:00Z")))
+        job.cancelAndJoin();job=SupervisorJob()
+        store=FrozenTaskStore(PreferenceDataStoreFactory.create(scope=CoroutineScope(Dispatchers.IO+job),produceFile={file}),future)
+        store.initialize()
+        assertEquals(expected,store.tasks.first())
+        assertEquals(1,expected[1].history.size)
+        assertEquals(original[1].id,expected[1].id)
+        store.setState(original[1].id,FrozenState.TODO)
+        val removed=store.tasks.first()[1]
+        assertEquals("Finish Tuesday",removed.notes);assertEquals(original[1].date,removed.date)
+        assertEquals(listOf(FrozenState.CARRY_OVER,FrozenState.TODO),removed.history.map { it.state })
+        assertEquals(11,store.tasks.first().size)
+    }
     @Test fun templateReferencesArePersonalAndDoNotRequireClockOrWeekInputs() {
         assertTrue(FROZEN_REFERENCE_NOTE.contains("not official"))
         val template=mondayFrozenTemplate()
