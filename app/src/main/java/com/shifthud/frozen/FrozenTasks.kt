@@ -8,7 +8,8 @@ enum class FrozenState(val label: String) {
 }
 data class FrozenEvent(val state: FrozenState, val at: Instant)
 data class FrozenTask(val id: String, val date: LocalDate, val title: String, val description: String,
-    val state: FrozenState = FrozenState.TODO, val notes: String = "", val history: List<FrozenEvent> = emptyList())
+    val state: FrozenState = FrozenState.TODO, val notes: String = "", val history: List<FrozenEvent> = emptyList(),
+    val workflows: List<String> = emptyList(), val section: String = "", val sku: String = "", val plan: String = "")
 
 val FROZEN_MONDAY: LocalDate = LocalDate.of(2026,10,19)
 const val FROZEN_TITLE = "Frozen — Monday Solo Shift"
@@ -27,3 +28,26 @@ fun mondayFrozenTemplate(): List<FrozenTask> = listOf(
     "Check missing price tags" to "Locate yellow missing-tag markers.\nUse SIMS Price Tags.\nSelect correct internal tag format.\nFinalize list.\nPrint through authorized Sticker Shop workflow.",
     "Prepare Tuesday handoff" to "Review unfinished work, blockers and notes. Mark unfinished tasks Carry to next shift. Do not assign tasks to another employee."
 ).mapIndexed { index,(title,description) -> FrozenTask("frozen-2026-10-19-${index+1}",FROZEN_MONDAY,title,description) }
+
+fun tuesdayFrozenTemplate(date: LocalDate): List<FrozenTask> {
+    val groups = linkedMapOf(
+        "MORNING TRANSITION" to listOf("Get cart and clear previous endcap", "Return previous merchandise to home shelves",
+            "Consolidate remaining merchandise into backstock", "Remove previous promotional merchandise from ad wall",
+            "Organize new promotional merchandise on ad wall", "Pick one case of each new endcap product",
+            "Build the three-door, five-shelf layout", "Verify spacing and product fit"),
+        "MIDSHIFT" to listOf("Run Frozen backstock after transition", "Replenish home shelves as appropriate", "Assist Grocery when assigned"),
+        "ENDCAP — BUILD LAYOUT" to listOf("Place pizza across bottom shelf", "Arrange remaining products on upper shelves",
+            "Adjust shelving and product spacing", "Verify layout and product fit"),
+        "END OF SHIFT — FINAL FILL" to listOf("Return to endcap", "Fill new endcap", "Verify product placement",
+            "Verify final display presentation", "Leave promotional tag changeover for PSC")
+    )
+    return groups.flatMap { (section, titles) -> titles.mapIndexed { index, title ->
+        FrozenTask("tuesday-$date-$section-$index", date, title,
+            if(section.contains("BUILD")) "Reference: 3 doors, 5 shelves. Bottom shelf generally pizza; upper shelves variable. Follow management direction." else "",
+            workflows=listOf(date.toString()), section=section)
+    } }
+}
+
+fun frozenWorkflowTasks(tasks: List<FrozenTask>, workflow: String): List<FrozenTask> =
+    if(workflow.isBlank()) tasks.filter { it.workflows.isEmpty() || it.date==FROZEN_MONDAY }
+    else tasks.filter { workflow in it.workflows || it.state==FrozenState.CARRY_OVER }

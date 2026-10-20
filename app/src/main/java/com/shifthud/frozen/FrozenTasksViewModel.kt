@@ -8,6 +8,14 @@ import kotlinx.coroutines.flow.*
 class FrozenTasksViewModel(private val store:FrozenTaskStore):ViewModel() {
     private val _tasks=MutableStateFlow<List<FrozenTask>?>(null)
     val tasks=_tasks.asStateFlow()
+    val selectedWorkflow=store.selectedWorkflow.stateIn(viewModelScope,SharingStarted.Eagerly, "")
+    fun select(workflow:String)=write { store.selectWorkflow(workflow) }
+    fun start(date:java.time.LocalDate)=write { store.startTuesday(date) }
+    fun importProducts(date:java.time.LocalDate, week:java.time.LocalDate, location:String, products:List<EndcapProduct>,done:()->Unit)=write {
+        store.importProducts(date,week,location,products);done()
+    }
+    fun editProduct(id:String,name:String,sku:String,done:()->Unit)=write { store.editProduct(id,name,sku);done() }
+    fun removeProduct(id:String)=write { store.removeProduct(id) }
     private val _error=MutableStateFlow<String?>(null)
     val error=_error.asStateFlow()
     private val _busy=MutableStateFlow(false)
