@@ -32,14 +32,14 @@ import java.time.format.DateTimeFormatter
         EndcapImportScreen(vm,java.time.LocalDate.parse(selected)) { importing=false }
     } else FrozenTasksContent(visible,busy,error,vm::clearError,back,vm::state,vm::save,
         workflow=selected,controls={ FrozenWorkflowControls(tasks.orEmpty(),selected,busy,vm::start,vm::select,vm::startWednesday) { importing=true } },
-        removeProduct=vm::removeProduct,editProduct=vm::editProduct,truck=truck,truckArrival={ arrived->truck?.let { vm.truckArrival(it.date,arrived) } })
+        removeProduct=vm::removeProduct,editProduct=vm::editProduct,chooseVariety=vm::chooseVariety,truck=truck,truckArrival={ arrived->truck?.let { vm.truckArrival(it.date,arrived) } })
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun FrozenTasksContent(tasks:List<FrozenTask>?,busy:Boolean,error:String?,clearError:()->Unit,
     back:()->Unit,changeState:(String,FrozenState)->Unit,save:(String?,String,String,String,()->Unit)->Unit,
     workflow:String="",controls:@Composable ()->Unit={},removeProduct:(String)->Unit={},
-    editProduct:(String,String,String,()->Unit)->Unit={_,_,_,_->},truck:FrozenTruckWorkflow?=null,truckArrival:(Boolean)->Unit={}) {
+    editProduct:(String,String,String,()->Unit)->Unit={_,_,_,_->},truck:FrozenTruckWorkflow?=null,truckArrival:(Boolean)->Unit={},chooseVariety:(String,EndcapProduct,Boolean)->Unit={_,_,_->}) {
     var carryOpen by rememberSaveable(workflow) { mutableStateOf(true) }
     var completedOpen by rememberSaveable(workflow) { mutableStateOf(false) }
     var editing by remember { mutableStateOf<FrozenTask?>(null) }
@@ -111,6 +111,15 @@ import java.time.format.DateTimeFormatter
                 if(task.state==FrozenState.CARRY_OVER) Text("From ${task.date.format(date)}",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
             }) {
                 if(task.state!=FrozenState.CARRY_OVER) Text("From ${task.date.format(date)}",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
+                if(task.family.isNotBlank()) {
+                    Text("Eligible varieties · ${task.category}",Modifier.fillMaxWidth(),color=blue)
+                    Text("Choose additional varieties as they fit. These choices do not complete Final Fill.",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
+                    task.eligible.forEach { product -> Row(Modifier.fillMaxWidth()) {
+                        Checkbox(endcapProductIdentity(product) in task.chosen,{chooseVariety(task.id,product,it)},enabled=!busy,
+                            modifier=Modifier.semantics { contentDescription="Use variety ${product.name}" })
+                        Text(product.name+if(product.sku.isBlank()) "" else " · ${product.sku}",Modifier.weight(1f))
+                    } }
+                }
                 if(task.sku.isNotBlank()) Text("Item / SKU: ${task.sku}",Modifier.fillMaxWidth())
                 if(task.notes.isNotBlank())Text(task.notes,Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
                 Text(task.description.ifBlank { "No reference notes." },Modifier.fillMaxWidth(),color=blue,style=MaterialTheme.typography.bodyMedium)
@@ -122,7 +131,7 @@ import java.time.format.DateTimeFormatter
                         if(task.state!=FrozenState.TODO) TextButton(onClick={changeState(task.id,FrozenState.TODO)},enabled=!busy) { Text(if(task.state==FrozenState.CARRY_OVER) "Remove from carryover" else "Return to do",Modifier.fillMaxWidth()) }
                     }
                     if(task.plan.isNotBlank()) {
-                        TextButton(onClick={productEditing=task},enabled=!busy) { Text("Edit product / SKU") }
+                        if(task.family.isBlank()) TextButton(onClick={productEditing=task},enabled=!busy) { Text("Edit product / SKU") }
                         TextButton(onClick={removing=task},enabled=!busy) { Text("Remove product") }
                     }
                     TextButton(onClick={editing=task},enabled=!busy) { Text("Edit task / notes",Modifier.fillMaxWidth()) }

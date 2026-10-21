@@ -102,6 +102,7 @@ class FrozenTuesdayDeviceTest {
         ui.onNodeWithContentDescription("Confirm page 1 location and products").performScrollTo().performClick()
         File(context.cacheDir,"frozen-d3-review.png").outputStream().use { ui.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG,100,it) }
         ui.onNodeWithText("Confirm products and create pick list").performScrollTo().performClick()
+        ui.onNodeWithText("Save reviewed pick list").performClick()
         ui.waitUntil(10000) { finished }
         assertEquals("Corrected Cheese Pizza",store.tasks.first().single { it.plan.isNotBlank() }.title)
         // Cancelling a second, unsaved draft never reaches repository writes.

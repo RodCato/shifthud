@@ -15,9 +15,10 @@ class FrozenTasksViewModel(private val store:FrozenTaskStore):ViewModel() {
     fun truckArrival(date:java.time.LocalDate,arrived:Boolean)=write { store.setTruckArrived(date,arrived) }
     fun select(workflow:String)=write { store.selectWorkflow(workflow) }
     fun start(date:java.time.LocalDate)=write { store.startTuesday(date) }
-    fun importProducts(date:java.time.LocalDate, week:java.time.LocalDate, location:String, products:List<EndcapProduct>,done:()->Unit)=write {
-        store.importProducts(date,week,location,products);done()
+    fun importProducts(date:java.time.LocalDate, week:java.time.LocalDate, location:String, products:List<EndcapProduct>,reference:String=ENDCAP_LAYOUT_REFERENCE,done:()->Unit)=write {
+        store.importProducts(date,week,location,products,reference);done()
     }
+    fun chooseVariety(id:String,product:EndcapProduct,chosen:Boolean)=write { store.chooseEndcapVariety(id,product,chosen) }
     fun editProduct(id:String,name:String,sku:String,done:()->Unit)=write { store.editProduct(id,name,sku);done() }
     fun removeProduct(id:String)=write { store.removeProduct(id) }
     val error=_error.asStateFlow()

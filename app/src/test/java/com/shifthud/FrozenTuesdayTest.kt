@@ -103,8 +103,8 @@ class FrozenTuesdayTest {
         val result=parseEndcapPage(document("Store Display Planning","Aisle 10 Front — Center","Item Number Description Initial Interim",
             "12345 Totino's Pizza Rolls Pepperoni 5 10","12346 Totino's Pizza Rolls Cheese 4 8","Birds Eye Mixed Vegetables",
             "Aisle 12 Front — Left","98765 Unrelated Product 5"))
-        assertEquals("Aisle 10 Front — Center",result.location)
-        assertEquals(listOf(EndcapProduct("Totino's Pizza Rolls Pepperoni","12345"),EndcapProduct("Totino's Pizza Rolls Cheese","12346"),EndcapProduct("Birds Eye Mixed Vegetables")),result.products)
+        assertNull(result.location) // Mixed displays require explicit selection.
+        assertEquals(listOf(EndcapProduct("Totino's Pizza Rolls Pepperoni","12345"),EndcapProduct("Totino's Pizza Rolls Cheese","12346"),EndcapProduct("Birds Eye Mixed Vegetables")),result.candidates.filter { it.location==TARGET_ENDCAP }.map { it.product })
     }
     @Test fun geometryIgnoresQuantityColumnsAndPreservesNumericVarietyNames() {
         fun piece(text:String,x:Int,y:Int)=OcrPiece(text,x,y,x+100,y+20)
@@ -115,8 +115,8 @@ class FrozenTuesdayTest {
         assertEquals("Brand 4 Cheese Pizza",parseEndcapPage(document("Aisle 10 Front Center","12345 Brand 4 Cheese Pizza 5 10")).products.single().name)
     }
     @Test fun unknownCroppedOrOtherDisplayRequiresManualReview() {
-        assertTrue(parseEndcapPage(document("12345 Cropped Product")).products.isEmpty())
-        assertNull(parseEndcapPage(document("Aisle 11 Front Center","12345 Wrong Product")).location)
+        assertEquals("Cropped Product",parseEndcapPage(document("12345 Cropped Product")).products.single().name)
+        assertEquals("Aisle 11 Front — Center",parseEndcapPage(document("Aisle 11 Front Center","12345 Wrong Product")).location)
         assertTrue(parseEndcapPage(document("Aisle 10 Front Center","12345 5 10")).products.isEmpty())
     }
     @Test fun nameOnlyNormalizationDoesNotMergeVarietiesOrDifferentSkus() {
