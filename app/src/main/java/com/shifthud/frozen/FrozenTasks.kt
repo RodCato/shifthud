@@ -9,7 +9,9 @@ enum class FrozenState(val label: String) {
 data class FrozenEvent(val state: FrozenState, val at: Instant)
 data class FrozenTask(val id: String, val date: LocalDate, val title: String, val description: String,
     val state: FrozenState = FrozenState.TODO, val notes: String = "", val history: List<FrozenEvent> = emptyList(),
-    val workflows: List<String> = emptyList(), val section: String = "", val sku: String = "", val plan: String = "")
+    val workflows: List<String> = emptyList(), val section: String = "", val sku: String = "", val plan: String = "",
+    val family:String="", val category:String="Unassigned", val eligible:List<EndcapProduct> = emptyList(),
+    val chosen:List<String> = emptyList(), val sourceNames:List<String> = emptyList(),val sourceSkus:List<String> = emptyList())
 
 val FROZEN_MONDAY: LocalDate = LocalDate.of(2026,10,19)
 const val FROZEN_TITLE = "Frozen — Monday Solo Shift"
