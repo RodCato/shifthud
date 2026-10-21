@@ -19,7 +19,7 @@ import com.shifthud.ui.components.ExpandableSection
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-@Composable fun FrozenTasksScreen(vm:FrozenTasksViewModel,back:()->Unit) {
+@Composable fun FrozenTasksScreen(vm:FrozenTasksViewModel,openCountRoute:()->Unit={},back:()->Unit) {
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -31,7 +31,7 @@ import java.time.format.DateTimeFormatter
     if(importing && selected.isNotBlank() && !isWednesdayWorkflow(selected)) {
         EndcapImportScreen(vm,java.time.LocalDate.parse(selected)) { importing=false }
     } else FrozenTasksContent(visible,busy,error,vm::clearError,back,vm::state,vm::save,
-        workflow=selected,controls={ FrozenWorkflowControls(tasks.orEmpty(),selected,busy,vm::start,vm::select,vm::startWednesday) { importing=true } },
+        workflow=selected,controls={ TextButton(onClick=openCountRoute) { Text("Count Route",Modifier.fillMaxWidth()) }; FrozenWorkflowControls(tasks.orEmpty(),selected,busy,vm::start,vm::select,vm::startWednesday) { importing=true } },
         removeProduct=vm::removeProduct,editProduct=vm::editProduct,chooseVariety=vm::chooseVariety,truck=truck,truckArrival={ arrived->truck?.let { vm.truckArrival(it.date,arrived) } })
 }
 

@@ -103,7 +103,7 @@ class MainActivity : ComponentActivity() {
                 Scaffold(snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
                     NavigationBar {
                         listOf("Dashboard", "Schedule", "Quick Find", "Settings").forEach { destination ->
-                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard").let { it == destination || (it == "ScheduleImport" && destination == "Schedule") || (it == "HistoricalImport" && destination == "Settings") || ((it == "FrozenTasks" || it == "Analytics" || it.startsWith("Paychecks") || it.startsWith("PaystubImport")) && destination == "Dashboard") }, onClick = { if (destination == "Quick Find") quickFindFocusRequest++; nav.selectTab(destination) }, icon = { if (destination == "Quick Find") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_search), contentDescription = null) else Text(destination.take(1)) }, label = { Text(destination) })
+                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard").let { it == destination || (it == "ScheduleImport" && destination == "Schedule") || (it == "HistoricalImport" && destination == "Settings") || ((it == "FrozenTasks" || it == "FrozenCountRoute" || it == "Analytics" || it.startsWith("Paychecks") || it.startsWith("PaystubImport")) && destination == "Dashboard") }, onClick = { if (destination == "Quick Find") quickFindFocusRequest++; nav.selectTab(destination) }, icon = { if (destination == "Quick Find") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_search), contentDescription = null) else Text(destination.take(1)) }, label = { Text(destination) })
                         }
                     }
                 }) { padding ->
@@ -114,7 +114,14 @@ class MainActivity : ComponentActivity() {
                                 @Suppress("UNCHECKED_CAST")
                                 override fun <T:ViewModel> create(modelClass:Class<T>):T = com.shifthud.frozen.FrozenTasksViewModel((application as ShiftHudApplication).frozenTasks) as T
                             })
-                            com.shifthud.frozen.FrozenTasksScreen(frozen,back={nav.popBackStack()})
+                            com.shifthud.frozen.FrozenTasksScreen(frozen,openCountRoute={nav.navigate("FrozenCountRoute") {launchSingleTop=true}},back={nav.popBackStack()})
+                        }
+                        composable("FrozenCountRoute") {
+                            val countRoute: com.shifthud.frozen.count.CountRouteViewModel = viewModel(factory=object:ViewModelProvider.Factory {
+                                @Suppress("UNCHECKED_CAST")
+                                override fun <T:ViewModel> create(modelClass:Class<T>):T = com.shifthud.frozen.count.CountRouteViewModel(com.shifthud.frozen.count.CountRouteStore(applicationContext)) as T
+                            })
+                            com.shifthud.frozen.count.CountRouteScreen(countRoute) {nav.popBackStack()}
                         }
                         composable("Analytics") {
                             val analytics: com.shifthud.ui.analytics.AnalyticsViewModel = viewModel(factory = object : ViewModelProvider.Factory {
