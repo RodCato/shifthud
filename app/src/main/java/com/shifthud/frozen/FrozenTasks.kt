@@ -50,4 +50,4 @@ fun tuesdayFrozenTemplate(date: LocalDate): List<FrozenTask> {
 
 fun frozenWorkflowTasks(tasks: List<FrozenTask>, workflow: String): List<FrozenTask> =
     if(workflow.isBlank()) tasks.filter { it.workflows.isEmpty() || it.date==FROZEN_MONDAY }
-    else tasks.filter { workflow in it.workflows || it.state==FrozenState.CARRY_OVER }
+    else tasks.filter { workflow in it.workflows || (it.state==FrozenState.CARRY_OVER && (!isWednesdayWorkflow(workflow) || it.date<=frozenWorkflowDate(workflow))) }

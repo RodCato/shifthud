@@ -24,26 +24,31 @@ import java.time.format.DateTimeFormatter
     val error by vm.error.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val selected by vm.selectedWorkflow.collectAsStateWithLifecycle()
+    val trucks by vm.truckWorkflows.collectAsStateWithLifecycle()
+    val truck=trucks.singleOrNull { isWednesdayWorkflow(selected) && it.date==frozenWorkflowDate(selected) }
     var importing by remember { mutableStateOf(false) }
     val visible=tasks?.let { frozenWorkflowTasks(it,selected) }
-    if(importing && selected.isNotBlank()) {
+    if(importing && selected.isNotBlank() && !isWednesdayWorkflow(selected)) {
         EndcapImportScreen(vm,java.time.LocalDate.parse(selected)) { importing=false }
     } else FrozenTasksContent(visible,busy,error,vm::clearError,back,vm::state,vm::save,
-        workflow=selected,controls={ FrozenWorkflowControls(tasks.orEmpty(),selected,busy,vm::start,vm::select) { importing=true } },
-        removeProduct=vm::removeProduct,editProduct=vm::editProduct)
+        workflow=selected,controls={ FrozenWorkflowControls(tasks.orEmpty(),selected,busy,vm::start,vm::select,vm::startWednesday) { importing=true } },
+        removeProduct=vm::removeProduct,editProduct=vm::editProduct,truck=truck,truckArrival={ arrived->truck?.let { vm.truckArrival(it.date,arrived) } })
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun FrozenTasksContent(tasks:List<FrozenTask>?,busy:Boolean,error:String?,clearError:()->Unit,
     back:()->Unit,changeState:(String,FrozenState)->Unit,save:(String?,String,String,String,()->Unit)->Unit,
     workflow:String="",controls:@Composable ()->Unit={},removeProduct:(String)->Unit={},
-    editProduct:(String,String,String,()->Unit)->Unit={_,_,_,_->}) {
-    var carryOpen by rememberSaveable { mutableStateOf(true) }
-    var completedOpen by rememberSaveable { mutableStateOf(false) }
+    editProduct:(String,String,String,()->Unit)->Unit={_,_,_,_->},truck:FrozenTruckWorkflow?=null,truckArrival:(Boolean)->Unit={}) {
+    var carryOpen by rememberSaveable(workflow) { mutableStateOf(true) }
+    var completedOpen by rememberSaveable(workflow) { mutableStateOf(false) }
     var editing by remember { mutableStateOf<FrozenTask?>(null) }
     var productEditing by remember { mutableStateOf<FrozenTask?>(null) }
     var removing by remember { mutableStateOf<FrozenTask?>(null) }
-    val closedSections=remember { mutableStateMapOf<String,Boolean>() }
+    val closedSections=remember(workflow) { mutableStateMapOf<String,Boolean>() }
+    LaunchedEffect(workflow,truck?.arrival) {
+        if(truck?.arrival!=null) { closedSections.remove("TRUCK RECEIVING");closedSections.remove("STOCKING") }
+    }
     var adding by rememberSaveable { mutableStateOf(false) }
     val locale=LocalConfiguration.current.locales[0]
     val date=DateTimeFormatter.ofPattern("EEE, MMM d, uuuu",locale)
@@ -57,10 +62,11 @@ import java.time.format.DateTimeFormatter
         item {
             TextButton(onClick=back,modifier=Modifier.semantics { contentDescription="Back to Dashboard" }) { Text("Back",Modifier.fillMaxWidth()) }
             Text("Frozen Tasks",Modifier.fillMaxWidth(),style=MaterialTheme.typography.headlineMedium)
-            Text(if(workflow.isBlank()) FROZEN_TITLE else "Frozen — Tuesday Workflow",Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleMedium)
-            Text(if(workflow.isBlank()) "${FROZEN_MONDAY.format(date)} · 8:00 AM–5:00 PM" else java.time.LocalDate.parse(workflow).format(date),Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodyMedium)
+            Text(if(workflow.isBlank()) FROZEN_TITLE else if(isWednesdayWorkflow(workflow)) "Wednesday — Frozen Truck" else "Frozen — Tuesday Workflow",Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleMedium)
+            Text(if(workflow.isBlank()) "${FROZEN_MONDAY.format(date)} · 8:00 AM–5:00 PM" else frozenWorkflowDate(workflow).format(date),Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodyMedium)
             Text(if(workflow.isBlank()) "One-time checklist · carryovers stay here for your next Frozen shift" else "Frozen assignment · manually selected workflow",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
         }
+        if(isWednesdayWorkflow(workflow)) item { FrozenTruckStatus(truck,busy,truckArrival) }
         item { controls() }
         item {
             if(tasks==null) Text(if(error==null) "Loading tasks…" else "Checklist unavailable. Reopen Frozen Tasks to retry.")
@@ -75,7 +81,11 @@ import java.time.format.DateTimeFormatter
             Triple("ACTIVE TASKS",groups.active,true),
             Triple("CARRYOVERS",groups.carryovers,carryOpen),
             Triple("COMPLETED",groups.completed,completedOpen)
-        ) else listOf(Triple("CARRYOVERS",groups.carryovers,carryOpen)) +
+        ) else if(isWednesdayWorkflow(workflow)) listOf(Triple("CARRYOVERS",groups.carryovers,carryOpen)) +
+            truckSectionOrder(truck?.arrival!=null).map { section ->
+                Triple(section,groups.active.filter { it.section==section || (section=="BEFORE TRUCK" && it.section !in truckSectionOrder(false)) },closedSections[section]!=true)
+            } + listOf(Triple("COMPLETED",groups.completed,completedOpen))
+        else listOf(Triple("CARRYOVERS",groups.carryovers,carryOpen)) +
             listOf("MORNING TRANSITION","ENDCAP — PICK FOR LAYOUT","ENDCAP — BUILD LAYOUT","MIDSHIFT","END OF SHIFT — FINAL FILL").map { section ->
                 Triple(section,groups.active.filter { it.section==section || (section=="MORNING TRANSITION" && it.section.isBlank()) },closedSections[section]!=true)
             } + listOf(Triple("COMPLETED",groups.completed,completedOpen))
