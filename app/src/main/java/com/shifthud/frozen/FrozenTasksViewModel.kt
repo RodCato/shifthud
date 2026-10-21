@@ -6,9 +6,13 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
 class FrozenTasksViewModel(private val store:FrozenTaskStore):ViewModel() {
+    private val _error=MutableStateFlow<String?>(null)
     private val _tasks=MutableStateFlow<List<FrozenTask>?>(null)
     val tasks=_tasks.asStateFlow()
     val selectedWorkflow=store.selectedWorkflow.stateIn(viewModelScope,SharingStarted.Eagerly, "")
+    val truckWorkflows=store.truckWorkflows.catch { _error.value="Truck status could not load. Saved data has not been replaced." }.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
+    fun startWednesday(date:java.time.LocalDate)=write { store.startWednesday(date) }
+    fun truckArrival(date:java.time.LocalDate,arrived:Boolean)=write { store.setTruckArrived(date,arrived) }
     fun select(workflow:String)=write { store.selectWorkflow(workflow) }
     fun start(date:java.time.LocalDate)=write { store.startTuesday(date) }
     fun importProducts(date:java.time.LocalDate, week:java.time.LocalDate, location:String, products:List<EndcapProduct>,done:()->Unit)=write {
@@ -16,7 +20,6 @@ class FrozenTasksViewModel(private val store:FrozenTaskStore):ViewModel() {
     }
     fun editProduct(id:String,name:String,sku:String,done:()->Unit)=write { store.editProduct(id,name,sku);done() }
     fun removeProduct(id:String)=write { store.removeProduct(id) }
-    private val _error=MutableStateFlow<String?>(null)
     val error=_error.asStateFlow()
     private val _busy=MutableStateFlow(false)
     val busy=_busy.asStateFlow()

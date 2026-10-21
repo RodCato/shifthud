@@ -18,9 +18,11 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
     constructor(context: Context): this(context.applicationContext.frozenTaskStore)
     private val key=stringPreferencesKey("tasks_v1")
     private val selectedKey=stringPreferencesKey("selected_workflow")
+    private val trucksKey=stringPreferencesKey("truck_workflows_v1")
+    val truckWorkflows=store.data.map { decodeTrucks(it[trucksKey]) }
     val selectedWorkflow=store.data.map { it[selectedKey].orEmpty() }
     val tasks=store.data.map { decode(it[key]) }
-    suspend fun initialize() { store.guardedEdit { if(it[key]==null) it[key]=encode(mondayFrozenTemplate()) else decode(it[key]) } }
+    suspend fun initialize() { store.guardedEdit { if(it[key]==null) it[key]=encode(mondayFrozenTemplate()) else decode(it[key]);decodeTrucks(it[trucksKey]) } }
     suspend fun setState(id: String, state: FrozenState) = change(id) { task ->
         if(task.state==state) task else task.copy(state=state,history=task.history+FrozenEvent(state,clock.instant()))
     }
@@ -32,7 +34,7 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
         validate(title,description,notes)
         store.guardedEdit { values ->
             val existing=decode(values[key]); check(values[key]!=null) { "Checklist is not loaded." }
-            values[key]=encode(existing+FrozenTask(UUID.randomUUID().toString(),values[selectedKey]?.takeIf { it.isNotBlank() }?.let(LocalDate::parse) ?: FROZEN_MONDAY,title.trim(),description.trim(),notes=notes.trim(),workflows=listOfNotNull(values[selectedKey]?.takeIf { it.isNotBlank() }),section="MORNING TRANSITION"))
+            values[key]=encode(existing+FrozenTask(UUID.randomUUID().toString(),values[selectedKey]?.takeIf { it.isNotBlank() }?.let(::frozenWorkflowDate) ?: FROZEN_MONDAY,title.trim(),description.trim(),notes=notes.trim(),workflows=listOfNotNull(values[selectedKey]?.takeIf { it.isNotBlank() }),section=if(isWednesdayWorkflow(values[selectedKey].orEmpty())) "BEFORE TRUCK" else "MORNING TRANSITION"))
         }
     }
     suspend fun selectWorkflow(workflow: String) { store.guardedEdit { it[selectedKey]=workflow } }
@@ -45,6 +47,50 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
         values[key]=encode(linked+template.filter { candidate -> existing.none { it.id==candidate.id } })
         values[selectedKey]=workflow
     } }
+    suspend fun startWednesday(date:LocalDate) { store.guardedEdit { values ->
+        val existing=decode(values[key]);check(values[key]!=null)
+        val workflow=wednesdayWorkflowId(date)
+        val records=decodeTrucks(values[trucksKey])
+        val carryovers=existing.filter { it.state==FrozenState.CARRY_OVER && it.date<=date }
+        val linked=existing.map { if(it in carryovers && workflow !in it.workflows) it.copy(workflows=it.workflows+workflow) else it }
+        val record=records.singleOrNull { it.date==date }
+        if(record==null) {
+            val added=wednesdayFrozenTemplate(date).filter { candidate ->
+                existing.none { it.id==candidate.id } && carryovers.none { frozenTruckTaskType(it)==frozenTruckTaskType(candidate) }
+            }
+            values[key]=encode(linked+added)
+            values[trucksKey]=encodeTrucks(records+FrozenTruckWorkflow(date,(carryovers.map { it.id }+added.map { it.id }).distinct()))
+        } else {
+            values[key]=encode(linked)
+            values[trucksKey]=encodeTrucks(records.map { if(it.date==date) it.copy(taskIds=(it.taskIds+carryovers.map { task->task.id }).distinct()) else it })
+        }
+        values[selectedKey]=workflow
+    } }
+    suspend fun setTruckArrived(date:LocalDate,arrived:Boolean,zone:ZoneId=ZoneId.systemDefault()) { store.guardedEdit { values ->
+        val records=decodeTrucks(values[trucksKey]);check(records.any { it.date==date }) { "Open a saved Wednesday workflow first." }
+        values[trucksKey]=encodeTrucks(records.map { record ->
+            if(record.date!=date || (record.arrival!=null)==arrived) record
+            else record.copy(events=record.events+TruckArrivalEvent(arrived,clock.instant(),zone.id))
+        })
+    } }
+    internal fun encodeTrucks(records:List<FrozenTruckWorkflow>):String=JSONObject().put("version",1).put("workflows",JSONArray().apply {
+        records.forEach { record -> put(JSONObject().put("date",record.date.toString()).put("taskIds",JSONArray(record.taskIds))
+            .put("events",JSONArray().apply { record.events.forEach { event ->
+                put(JSONObject().put("arrived",event.arrived).put("at",event.at.toString()).put("zone",event.zone))
+            } })) }
+    }).toString()
+    internal fun decodeTrucks(raw:String?):List<FrozenTruckWorkflow> {
+        if(raw==null)return emptyList()
+        val root=JSONObject(raw);check(root.getInt("version")==1) { "Unsupported Frozen truck data version." }
+        val records=root.getJSONArray("workflows")
+        return (0 until records.length()).map { index ->
+            val record=records.getJSONObject(index);val ids=record.getJSONArray("taskIds");val events=record.getJSONArray("events")
+            FrozenTruckWorkflow(LocalDate.parse(record.getString("date")),(0 until ids.length()).map { ids.getString(it) },
+                (0 until events.length()).map { i->val event=events.getJSONObject(i)
+                    TruckArrivalEvent(event.getBoolean("arrived"),Instant.parse(event.getString("at")),ZoneId.of(event.getString("zone")).id)
+                })
+        }.also { rows->check(rows.map { it.date }.distinct().size==rows.size) { "Duplicate Frozen truck workflows." } }
+    }
     suspend fun importProducts(date: LocalDate, week: LocalDate, location: String, products: List<EndcapProduct>) {
         require(week.dayOfWeek==DayOfWeek.SATURDAY) { "Choose the Saturday starting the promotional week." }
         require(location.isNotBlank() && location.length<=160)
