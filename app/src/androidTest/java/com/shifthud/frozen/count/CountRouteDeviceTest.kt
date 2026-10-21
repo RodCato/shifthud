@@ -58,18 +58,25 @@ class CountRouteDeviceTest {
     @Test fun emptySetupPartialSaveAndStartThroughUi() {
         screen();show("Configure door map");capture("empty")
         click("Configure door map")
-        ui.onNode(hasScrollAction()).performScrollToNode(hasText("A10-R door count"))
-        ui.onNodeWithText("A10-R door count").performTextInput("2")
-        androidx.test.espresso.Espresso.closeSoftKeyboard();capture("map")
+        click("Add section A10-R")
+        show("A10-R section 1 department: Unknown");ui.onNodeWithContentDescription("A10-R section 1 department").performClick();ui.onNodeWithText("Frozen").performClick()
+        show("A10-R section 1 type: Unknown");ui.onNodeWithContentDescription("A10-R section 1 type").performClick();ui.onNodeWithText("Upright freezer doors").performClick()
+        ui.onNode(hasScrollAction()).performScrollToNode(hasText("A10-R section 1 location count"))
+        ui.onNodeWithText("A10-R section 1 location count").performTextInput("2")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        click("Add section A10-R")
+        show("A10-R section 2 department: Unknown");ui.onNodeWithContentDescription("A10-R section 2 department").performClick();ui.onNodeWithText("Meat").performClick()
+        show("Excluded from Frozen route; not missing or skipped.");capture("map")
         click("Review and save door map")
         ui.onNodeWithText("Save map for future cycles").performClick()
-        waitFor {it.map.first().count==2}
+        waitFor {it.map.first().sections?.size==2}
+        assertEquals(SectionDepartment.MEAT,data().map.first().sections!![1].department)
         click("Start New Counting Cycle");ui.onNodeWithText("Start cycle").performClick();waitFor {it.active!=null}
         assertEquals(listOf("A10-R-01","A10-R-02"),data().active!!.doors.map {it.id})
         assertFalse(data().active!!.mapComplete);show("+1 Count");capture("active")
     }
     @Test fun countPauseSkipRevisitFinishAndManualApproval()=runBlocking {
-        store.saveMap(0,initialDoorMap().mapIndexed {i,s->if(i==0)s.copy(count=2) else s})
+        store.saveMap(0,initialDoorMap().mapIndexed {i,s->if(i==0)s.copy(count=null,sections=listOf(PhysicalSection("test",department=SectionDepartment.FROZEN,kind=SectionKind.UPRIGHT,count=2))) else s})
         store.start(1);screen()
         repeat(3) {n->
             if(n==0) {show("+1 Count");ui.onNodeWithText("+1 Count").performTouchInput {doubleClick()}} else click("+1 Count")
@@ -79,15 +86,15 @@ class CountRouteDeviceTest {
         click("Undo Last Count");waitFor {it.active!!.products==2}
         click("+1 Count");waitFor {it.active!!.products==3}
         click("Pause Session");waitFor {it.active!!.paused}
-        show("Continue Aisle 10 · Right · Door 1 — 3/5");capture("paused")
+        show("Continue Aisle 10 · Right · Section 1 · Door 1 — 3/5");capture("paused")
         click("Resume Session");waitFor {!it.active!!.paused}
         assertEquals("A10-R-01",data().active!!.current)
-        click("Skip Door");ui.onNodeWithText("Door note (optional)").performTextInput("Synthetic blocked access")
+        click("Skip Location");ui.onNodeWithText("Location note (optional)").performTextInput("Synthetic blocked access")
         androidx.test.espresso.Espresso.closeSoftKeyboard();ui.onNodeWithText("Mark skipped").performClick();waitFor {it.active!!.skipped==1}
-        click("Complete Door");ui.onNodeWithText("Mark sampled").performClick();waitFor {it.active!!.sampled==1}
+        click("Complete Location");ui.onNodeWithText("Mark sampled").performClick();waitFor {it.active!!.sampled==1}
         click("Aisle 10 · Right");click("Revisit A10-R-01");waitFor {it.active!!.current=="A10-R-01"}
         assertEquals(3,data().active!!.currentDoor!!.products)
-        click("Complete Door");ui.onNodeWithText("Mark sampled").performClick();waitFor {it.active!!.sampled==2}
+        click("Complete Location");ui.onNodeWithText("Mark sampled").performClick();waitFor {it.active!!.sampled==2}
         click("Sessions & manual approval")
         ui.onNode(hasScrollAction()).performScrollToNode(hasText("Edit manual status",substring=true))
         ui.onAllNodes(hasText("Edit manual status",substring=true)).onFirst().performClick()
@@ -98,20 +105,20 @@ class CountRouteDeviceTest {
         click("Cycle 1");capture("history")
     }
     @Test fun narrowLargeTextAndMapCorrectionsPreserveActiveDoor()=runBlocking {
-        store.saveMap(0,initialDoorMap().mapIndexed {i,s->if(i==0)s.copy(count=2) else s.copy(excluded=true)})
+        store.saveMap(0,initialDoorMap().mapIndexed {i,s->if(i==0)s.copy(count=null,sections=listOf(PhysicalSection("test",department=SectionDepartment.FROZEN,kind=SectionKind.UPRIGHT,count=2))) else s.copy(excluded=true)})
         store.start(1);store.count(2,1,"A10-R-01")
         screen(2f);show("+1 Count");capture("large")
         click("Configure door map")
-        ui.onNode(hasScrollAction()).performScrollToNode(hasText("A10-R door count"))
-        ui.onNodeWithText("A10-R door count").performTextClearance()
-        ui.onNodeWithText("A10-R door count").performTextInput("1")
+        ui.onNode(hasScrollAction()).performScrollToNode(hasText("A10-R section 1 location count"))
+        ui.onNodeWithText("A10-R section 1 location count").performTextClearance()
+        ui.onNodeWithText("A10-R section 1 location count").performTextInput("1")
         androidx.test.espresso.Espresso.closeSoftKeyboard();click("Review and save door map")
         ui.onNodeWithText("Save map for future cycles").assertIsDisplayed()
         val primary=ui.onNode(hasText("Save map for future cycles") and hasClickAction()).fetchSemanticsNode().boundsInRoot
         val cancel=ui.onNode(hasText("Keep editing") and hasClickAction()).fetchSemanticsNode().boundsInRoot
         assertTrue("Dialog action touch targets overlap",primary.bottom<=cancel.top)
         capture("map-change")
-        ui.onNodeWithText("Save map for future cycles").performClick();waitFor {it.map.first().count==1}
+        ui.onNodeWithText("Save map for future cycles").performClick();waitFor {it.map.first().sections!!.single().count==1}
         assertEquals(2,data().active!!.doors.size);assertEquals(1,data().active!!.products);assertEquals("A10-R-01",data().active!!.current)
     }
     @Test fun frozenEntryAndReturnPreserveChecklistAndTruckState()=runBlocking {

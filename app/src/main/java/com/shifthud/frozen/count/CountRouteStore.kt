@@ -28,6 +28,7 @@ class CountRouteStore(private val preferences:DataStore<Preferences>,private val
     }
     suspend fun start(revision:Long)=change(revision) {data->
         check(data.active==null) {"Finish the current cycle before starting another."}
+        require(data.map.all {it.sections!=null || it.excluded || it.count==null}) {"Review department ownership before starting a route."}
         val doors=generateDoors(data.map);require(doors.isNotEmpty()) {"Configure at least one door first."}
         val now=clock.instant();val first=doors.first().id
         val cycle=CountCycle((data.cycles.maxOfOrNull {it.number} ?: 0)+1,now,target=data.target,map=data.map,doors=doors,current=first,
@@ -39,6 +40,7 @@ class CountRouteStore(private val preferences:DataStore<Preferences>,private val
         data.copy(cycles=data.cycles.map {if(it.number==cycle)update(it) else it})
     }
     suspend fun count(revision:Long,cycle:Int,door:String,undo:Boolean=false)=active(revision,cycle) {c->
+        check(c.ownershipKnown) {"Legacy route ownership is unknown. Finish this cycle and configure Frozen sections."}
         check(!c.paused && c.current==door && c.currentDoor?.state==DoorState.OPEN)
         val current=requireNotNull(c.currentDoor)
         require(!undo || current.products>0)
@@ -49,10 +51,12 @@ class CountRouteStore(private val preferences:DataStore<Preferences>,private val
     }
     suspend fun resolve(revision:Long,cycle:Int,door:String,state:DoorState,note:String="")=active(revision,cycle) {c->
         require(state!=DoorState.OPEN && note.length<=1000)
+        check(c.ownershipKnown) {"Legacy route ownership is unknown. Finish this cycle and configure Frozen sections."}
         check(!c.paused && c.current==door && c.currentDoor?.state==DoorState.OPEN)
         c.copy(doors=c.doors.map {if(it.id==door)it.copy(state=state,note=note.trim()) else it},current=c.nextOpen(door)?.id)
     }
     suspend fun revisit(revision:Long,cycle:Int,door:String)=active(revision,cycle) {c->
+        check(c.ownershipKnown) {"Legacy route ownership is unknown. Finish this cycle and configure Frozen sections."}
         check(!c.paused)
         val selected=c.doors.single {it.id==door};check(selected.state!=DoorState.SAMPLED)
         c.copy(doors=c.doors.map {if(it.id==door)it.copy(state=DoorState.OPEN) else it},current=door)

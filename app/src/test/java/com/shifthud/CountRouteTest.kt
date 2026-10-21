@@ -23,7 +23,7 @@ class CountRouteTest {
     private var preferences=prefs();private var store=CountRouteStore(preferences,clock)
     @After fun cleanup()=runBlocking {job.cancelAndJoin();file.parentFile!!.deleteRecursively();Unit}
     private suspend fun data()=store.data.first()
-    private fun configured(vararg counts:Int)=initialDoorMap().mapIndexed {i,s->s.copy(count=counts.getOrNull(i) ?: 1,direction=s.direction ?: WalkDirection.FRONT_BACK)}
+    private fun configured(vararg counts:Int)=initialDoorMap().mapIndexed {i,s->s.copy(sections=listOf(PhysicalSection("test",department=SectionDepartment.FROZEN,kind=SectionKind.UPRIGHT,count=counts.getOrNull(i) ?: 1)),direction=s.direction ?: WalkDirection.FRONT_BACK)}
     private suspend fun start(map:List<RouteSegment> = configured(2,1,3,1,1,2)) {store.saveMap(data().revision,map);store.start(data().revision)}
     private suspend fun add(undo:Boolean=false) {val d=data();store.count(d.revision,d.active!!.number,d.active!!.current!!,undo)}
     private suspend fun resolve(state:DoorState,note:String="") {val d=data();store.resolve(d.revision,d.active!!.number,d.active!!.current!!,state,note)}
@@ -32,7 +32,7 @@ class CountRouteTest {
         assertNull(d.active);assertTrue(runCatching {store.start(d.revision)}.isFailure);assertEquals(d,data())
     }
     @Test fun partialMapCreatesOnlyConfiguredLocationsAndCannotClaimCoverage()=runBlocking {
-        start(initialDoorMap().mapIndexed {i,s->if(i==0)s.copy(count=1) else s})
+        start(initialDoorMap().mapIndexed {i,s->if(i==0)s.copy(count=null,sections=listOf(PhysicalSection("test",department=SectionDepartment.FROZEN,kind=SectionKind.UPRIGHT,count=1))) else s})
         val c=data().active!!;assertEquals(listOf("A10-R-01"),c.doors.map {it.id});assertFalse(c.mapComplete)
         resolve(DoorState.SAMPLED);assertFalse(data().active!!.covered);assertNull(data().active!!.current)
     }
@@ -41,6 +41,7 @@ class CountRouteTest {
         assertEquals(listOf("A10-R-01","A10-R-02","A10-L-01","A11-R-01","A11-R-02","A11-R-03","A11-L-01","A11-L-02","A12-R-01","A12-R-02","A12-L-01"),generateDoors(map).map {it.id})
         assertEquals(listOf(WalkDirection.FRONT_BACK,WalkDirection.BACK_FRONT,WalkDirection.FRONT_BACK,WalkDirection.BACK_FRONT),map.take(4).map {it.direction})
         assertEquals(WalkDirection.BACK_FRONT,map[4].direction)
+        assertTrue(mapChanges(configured(2,1,3,2,2,1),map).single().contains("Back → Front"))
     }
     @Test fun aisle12CanStartOnEitherSideWithoutChangingConfirmedAisles() {
         val map=configured(1,1,1,1,2,1)
@@ -49,12 +50,12 @@ class CountRouteTest {
         assertTrue(mapChanges(map,reversed).any {it.contains("walking order")})
     }
     @Test fun unknownAisle12DirectionAndInvalidCountsAreRejected() {
-        assertThrows(IllegalArgumentException::class.java) {generateDoors(initialDoorMap().map {if(it.id=="A12-R")it.copy(count=3) else it})}
+        assertThrows(IllegalArgumentException::class.java) {generateDoors(initialDoorMap().map {if(it.id=="A12-R")it.copy(count=null,sections=listOf(PhysicalSection("test",department=SectionDepartment.FROZEN,kind=SectionKind.UPRIGHT,count=3))) else it})}
         listOf(0,-1,201).forEach {n->assertThrows(IllegalArgumentException::class.java) {generateDoors(configured(n))}}
         assertThrows(IllegalArgumentException::class.java) {generateDoors(configured().reversed())}
     }
     @Test fun explicitExclusionsResolveMapWithoutInventingDoors()=runBlocking {
-        start(initialDoorMap().mapIndexed {i,s->if(i==0)s.copy(count=1) else s.copy(excluded=true)})
+        start(initialDoorMap().mapIndexed {i,s->if(i==0)s.copy(count=null,sections=listOf(PhysicalSection("test",department=SectionDepartment.FROZEN,kind=SectionKind.UPRIGHT,count=1))) else s.copy(excluded=true)})
         resolve(DoorState.SAMPLED);assertTrue(data().active!!.covered);assertEquals(1,data().active!!.doors.size)
     }
     @Test fun targetCanChangeBeforeAndDuringCycleWithoutCompletingDoors()=runBlocking {
@@ -94,7 +95,7 @@ class CountRouteTest {
         store.start(data().revision);assertEquals(old,data().cycles.first());assertEquals(2,data().active!!.number);assertEquals(0,data().active!!.products)
     }
     @Test fun finishingLastDoorDoesNotAutomaticallyFinishOrRestartCycle()=runBlocking {
-        start(initialDoorMap().mapIndexed {i,s->if(i==0)s.copy(count=1) else s.copy(excluded=true)})
+        start(initialDoorMap().mapIndexed {i,s->if(i==0)s.copy(count=null,sections=listOf(PhysicalSection("test",department=SectionDepartment.FROZEN,kind=SectionKind.UPRIGHT,count=1))) else s.copy(excluded=true)})
         resolve(DoorState.SAMPLED);assertNotNull(data().active);assertNull(data().active!!.current)
         store.finish(data().revision,1);assertNull(data().active);assertEquals(1,data().cycles.size)
     }
@@ -135,4 +136,47 @@ class CountRouteTest {
         store.finish(data().revision,1);val before=data();assertEquals(before,decodeCountRoute(encodeCountRoute(before)))
         job.cancelAndJoin();job=SupervisorJob();preferences=prefs();store=CountRouteStore(preferences,clock);assertEquals(before,data())
     }
+    private fun section(id:String,owner:SectionDepartment?,count:Int?,kind:SectionKind=SectionKind.UPRIGHT)=PhysicalSection(id,id,owner,kind,count)
+    @Test fun mixedOwnershipAndCaseTypesGenerateOnlyFrozenLocationsInWalkingOrder() {
+        val sections=listOf(section("meat",SectionDepartment.MEAT,7),section("frozen-doors",SectionDepartment.FROZEN,2),section("other",SectionDepartment.OTHER,3),section("frozen-cases",SectionDepartment.FROZEN,1,SectionKind.OPEN_CASE))
+        val map=initialDoorMap().mapIndexed {i,s->if(i<2)s.copy(sections=if(i==0)sections else sections.reversed()) else s.copy(excluded=true)}
+        val doors=generateDoors(map)
+        assertEquals(listOf("A10-R-01","A10-R-02","A10-R-03","A10-L-01","A10-L-02","A10-L-03"),doors.map {it.id})
+        assertEquals(listOf("frozen-doors","frozen-doors","frozen-cases","frozen-cases","frozen-doors","frozen-doors"),doors.map {it.sectionId})
+        assertTrue(map.all {it.configured})
+        val cycle=CountCycle(1,clock.instant(),target=5,map=map,doors=doors,current=doors.first().id,sessions=emptyList())
+        assertTrue(cycle.location(doors[2]).contains("Case 3"))
+        assertEquals(0,cycle.skipped)
+    }
+    @Test fun unknownOwnershipDoesNotCreateDoorsAndNonFrozenNeedsNoCount() {
+        val map=initialDoorMap().mapIndexed {i,s->if(i==0)s.copy(sections=listOf(section("unknown",null,10),section("meat",SectionDepartment.MEAT,null),section("frozen",SectionDepartment.FROZEN,2))) else s.copy(excluded=true)}
+        assertEquals(2,generateDoors(map).size);assertFalse(map.first().configured)
+        val resolved=map.map {it.copy(sections=it.sections?.filterNot {s->s.id=="unknown"})}
+        assertTrue(resolved.all {it.configured});assertEquals(2,generateDoors(resolved).size)
+    }
+    @Test fun ownershipCorrectionsAndSectionReorderingPreserveActiveHistory()=runBlocking {
+        val map=initialDoorMap().mapIndexed {i,s->if(i==0)s.copy(sections=listOf(section("one",SectionDepartment.FROZEN,2),section("two",SectionDepartment.MEAT,4))) else s.copy(excluded=true)}
+        start(map);add();val snapshot=data().active!!
+        val corrected=map.map {it.copy(sections=it.sections?.reversed()?.map {s->s.copy(department=if(s.id=="one")SectionDepartment.MEAT else SectionDepartment.FROZEN)})}
+        store.saveMap(data().revision,corrected);assertEquals(snapshot,data().active)
+        store.finish(data().revision,1);val history=data().cycles.first();store.start(data().revision)
+        assertEquals(history,data().cycles.first());assertEquals(4,data().active!!.doors.size)
+        assertTrue(data().active!!.doors.all {it.sectionId=="two"})
+        assertEquals(data(),decodeCountRoute(encodeCountRoute(data())))
+    }
+    @Test fun versionOneTotalsRequireOwnershipReviewButKeepCycleCounts()=runBlocking {
+        val oldMap=initialDoorMap().mapIndexed {i,s->if(i==0)s.copy(count=2) else s.copy(excluded=true)}
+        val doors=generateDoors(oldMap).mapIndexed {i,d->if(i==0)d.copy(products=3) else d}
+        val old=CountRouteData(map=oldMap,cycles=listOf(CountCycle(1,clock.instant(),target=5,map=oldMap,doors=doors,current=doors.first().id,sessions=listOf(CountSession("old",clock.instant(),startDoor=doors.first().id,products=3)))))
+        val json=org.json.JSONObject(encodeCountRoute(old)).put("version",1)
+        val decoded=decodeCountRoute(json.toString())
+        assertEquals(old.cycles,decoded.cycles);assertEquals(3,decoded.active!!.products)
+        assertNull(decoded.map.first().sections!!.single().department);assertTrue(generateDoors(decoded.map).isEmpty())
+        assertFalse(decoded.active!!.ownershipKnown);assertFalse(decoded.active!!.covered)
+        preferences.edit {it[stringPreferencesKey("count_route_v1")]=json.toString()}
+        assertTrue(runCatching {store.count(0,1,"A10-R-01")}.isFailure)
+        store.finish(data().revision,1);assertEquals(3,data().cycles.first().products)
+        assertTrue(runCatching {store.start(data().revision)}.isFailure)
+    }
+
 }

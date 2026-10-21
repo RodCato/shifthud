@@ -11,11 +11,15 @@ The initial independent-base plan was changed after checking compatibility: the 
 
 Open **Frozen Tasks → Count Route**. No bottom-navigation destination was added.
 
-All six segment counts begin unknown. The first four directions are fixed in confirmed walking order: A10 Right front→back, A10 Left back→front, A11 Right front→back, A11 Left back→front. For A12, configure each actual Frozen side and direction or explicitly exclude the unused side. Choose Right-then-Left or Left-then-Right when both A12 sides are used. Counts are independent; 1–200 doors per segment. Unknown/excluded segments create no doors. Partial maps can be saved and used, with an incomplete-map warning.
+Each aisle side contains a user-entered ordered list of physical sections. No section, department boundary, or door count is prepopulated. Classify each section as Frozen, Meat, Other, or leave ownership unknown; choose upright freezer doors or open freezer cases and its independent location count (1–200). Optional labels identify physical boundaries. Add/remove sections and move them earlier in walking order. Each side can have up to 100 sections, with no equality assumption between sides.
 
-Door identifiers reset in each segment and increase in walking order. These are personal ShiftHUD labels, not official store door numbers.
+Only explicitly Frozen-owned sections with a known type/count enter the route. Meat/Other sections are resolved exclusions even without a count; they never consume a route number, count as skipped, or prevent coverage. Unknown ownership and unresolved Frozen sections remain incomplete. For open cases, the user defines the distinct physical counting locations during the walkthrough; the app does not invent divisions.
 
-The default target is five products per door (editable 1–100 before/during a cycle). It never completes a door automatically. +1 Count saves immediately; Undo applies to the current door. Explicit Complete Door confirmation allows zero/fewer/more counts than the target. Skip retains counts and an optional note, excludes the door from sampled coverage and offers Revisit. Navigation can revisit unresolved doors without erasing partial counts.
+The first four directions remain A10 Right front→back, A10 Left back→front, A11 Right front→back, A11 Left back→front. Enter each side's sections in that walking order. Configure A12 side order and direction(s) explicitly or exclude unused sides. Eligible Frozen location numbers reset per aisle side and increase continuously across its Frozen sections, skipping non-Frozen sections. Route labels include the section and distinguish Door/Case. These are personal ShiftHUD labels, not official store numbers.
+
+Earlier unclassified side totals become unknown-ownership sections in the editable map, retaining their numbers for review rather than assuming Frozen ownership. Version-1 cycles retain their exact immutable snapshots, counts, session notes and history. Legacy active routes show an ownership warning and cannot record further counts, resolve or revisit doors; explicitly finish them and start a newly classified route. No recorded progress is deleted. Version-2 persistence retains section metadata and validates door-to-section association.
+
+The default target is five products per door (editable 1–100 before/during a cycle). It never completes a door automatically. +1 Count saves immediately; Undo applies to the current door. Explicit Complete Location confirmation allows zero/fewer/more counts than the target. Skip Location retains counts and an optional note, excludes the door from sampled coverage and offers Revisit. Navigation can revisit unresolved doors without erasing partial counts.
 
 Pause retains the current location and count, closes the counting session and records its date. Resume opens another session at exactly that door. A process restart while active retains the same session; no date or work-shift event automatically resets it. Session history records net count changes (undoing a previous session's count can make the current session's net adjustment negative).
 
@@ -25,7 +29,7 @@ Manual submission status and notes belong to individual counting sessions, inclu
 
 ## Map changes and persistence
 
-Each cycle owns an immutable snapshot of its route map and doors. Map edits preview added/removed identifiers and direction/count changes, then require confirmation. They affect **future cycles only**. The active screen explains when its snapshot differs from the latest saved map. Finish the existing cycle (partial coverage is allowed) and explicitly start another to use corrected totals. No completed/skipped/partial records are removed.
+Each cycle owns an immutable snapshot of its route map, physical sections and locations. Map edits preview added/removed identifiers and direction/count changes, then require confirmation. They affect **future cycles only**. The active screen explains when its snapshot differs from the latest saved map. Finish the existing cycle (partial coverage is allowed) and explicitly start another to use corrected totals. No completed/skipped/partial records are removed.
 
 The separate `frozen_count_route.preferences_pb` DataStore file holds versioned JSON for the map, default target, cycle snapshots, per-door state, current location, pause state, sessions and manual status/notes. Writes are atomic; each command carries an expected revision to make duplicate/stale writes harmless. The ViewModel also blocks pending writes and suppresses repeated identical actions for 350ms. Malformed/unsupported saved state reports an error instead of resetting progress.
 
@@ -59,7 +63,7 @@ Local screenshots/logs: `app/build/reports/count-route-f1/` (synthetic data only
 ## Physical acceptance
 
 1. Install the compatible debug APK over the existing app. Do not uninstall or clear data.
-2. Open Frozen Tasks → Count Route. Save only door totals physically verified; leave unknown sides blank. Configure A12 direction(s) or exclude unused side(s).
+2. Open Frozen Tasks → Count Route. Add sections in walking order and classify each as Frozen, Meat or Other. Save only location totals physically verified; leave uncertain ownership/counts unknown. Configure A12 direction(s) or exclude unused side(s).
 3. Start a cycle, count three products, pause and reopen. Confirm the exact door and 3/5 remain; test target changes and Undo.
 4. Skip a door with a note, complete another below target, then revisit the skipped door. Verify skipped doors are not sampled.
 5. Correct a door count. Verify the preview explains affected future locations and the active snapshot stays unchanged.
@@ -73,3 +77,11 @@ No physical freezer mapping or spoken TalkBack session is claimed from emulator 
 Production: new `frozen/count/CountRoute.kt`, `CountRouteStore.kt`, `CountRouteCodec.kt`, `CountRouteViewModel.kt`, `CountRouteScreen.kt`, `DoorMapScreen.kt`; navigation-only edits to `MainActivity.kt` and `frozen/FrozenTasksScreen.kt`.
 
 Tests: new `CountRouteTest.kt`, `frozen/count/CountRouteDeviceTest.kt`, `frozen/count/CountRouteRestartDeviceTest.kt`. This document is the remaining file.
+
+## Department-specific extension
+
+This supersedes the original whole-side ownership assumption. Map corrections still affect future cycles only, preserving active/historical location identities and counts. New regression coverage verifies mixed ownership, open cases, continuous eligible numbering, opposite traversal directions, unknown ownership, exclusions without counts, section reorder/ownership corrections and version-1 compatibility. No Room or existing Frozen task persistence format was changed.
+
+Extension build verification: `assembleDebug test lint assembleDebugAndroidTest` passed; 954 eligible unit tests per debug/release variant (1,908 executions). Lint remains 0 errors, 16 pre-existing warnings and 1 hint.
+
+All 59 eligible emulator tests and the additional actual 200% system-font check passed for this extension. The editor test creates a Frozen section and a Meat section without a count, verifies only Frozen locations are generated, and exercises the new section fields. Updated synthetic screenshots/logs are in `app/build/reports/count-route-sections/`. Debug APK installed in-place; no uninstall or app-data clear.
