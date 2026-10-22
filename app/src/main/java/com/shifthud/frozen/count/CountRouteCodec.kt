@@ -10,22 +10,23 @@ private fun JSONObject.optional(name:String)=if(isNull(name))null else getString
 private fun segmentJson(s:RouteSegment)=JSONObject().put("id",s.id).put("aisle",s.aisle).put("side",s.side)
     .put("direction",s.direction?.name ?: JSONObject.NULL).put("count",s.count ?: JSONObject.NULL).put("excluded",s.excluded).put("sections",s.sections?.json {section->JSONObject().put("id",section.id).put("label",section.label).put("department",section.department?.name ?: JSONObject.NULL).put("kind",section.kind?.name ?: JSONObject.NULL).put("count",section.count ?: JSONObject.NULL)} ?: JSONObject.NULL)
 private fun readSegment(s:JSONObject)=RouteSegment(s.getString("id"),s.getInt("aisle"),s.getString("side"),s.optional("direction")?.let(WalkDirection::valueOf),if(s.isNull("count"))null else s.getInt("count"),s.getBoolean("excluded"),if(s.isNull("sections"))null else s.getJSONArray("sections").read {section->PhysicalSection(section.getString("id"),section.getString("label"),section.optional("department")?.let(SectionDepartment::valueOf),section.optional("kind")?.let(SectionKind::valueOf),if(section.isNull("count"))null else section.getInt("count"))})
-internal fun encodeCountRoute(data:CountRouteData):String=JSONObject().put("version",2).put("revision",data.revision).put("target",data.target)
-    .put("map",data.map.json(::segmentJson)).put("cycles",data.cycles.json {c->JSONObject()
+internal fun encodeCountRoute(data:CountRouteData):String=JSONObject().put("version",3).put("revision",data.revision).put("target",data.target)
+    .put("previousMaps",JSONArray().also {a->data.previousMaps.forEach {a.put(it.json(::segmentJson))}}).put("map",data.map.json(::segmentJson)).put("cycles",data.cycles.json {c->JSONObject()
         .put("number",c.number).put("started",c.started.toString()).put("finished",c.finished?.toString() ?: JSONObject.NULL)
-        .put("target",c.target).put("map",c.map.json(::segmentJson)).put("current",c.current ?: JSONObject.NULL).put("paused",c.paused)
+        .put("target",c.target).put("map",c.map.json(::segmentJson)).put("current",c.current ?: JSONObject.NULL).put("paused",c.paused).put("ownershipConfirmed",c.ownershipConfirmed)
         .put("doors",c.doors.json {d->JSONObject().put("id",d.id).put("segment",d.segmentId).put("number",d.number).put("products",d.products).put("state",d.state.name).put("note",d.note).put("section",d.sectionId ?: JSONObject.NULL)})
         .put("sessions",c.sessions.json {s->JSONObject().put("id",s.id).put("started",s.started.toString()).put("ended",s.ended?.toString() ?: JSONObject.NULL)
             .put("startDoor",s.startDoor ?: JSONObject.NULL).put("endDoor",s.endDoor ?: JSONObject.NULL).put("products",s.products).put("submission",s.submission.name).put("note",s.note)})
     }).toString()
 internal fun decodeCountRoute(raw:String?):CountRouteData {
     if(raw==null)return CountRouteData()
-    val root=JSONObject(raw);require(root.getInt("version") in 1..2) {"Unsupported count route version; saved data was not replaced."}
+    val root=JSONObject(raw);require(root.getInt("version") in 1..3) {"Unsupported count route version; saved data was not replaced."}
     val data=CountRouteData(root.getLong("revision"),root.getJSONArray("map").read(::readSegment),root.getInt("target"),root.getJSONArray("cycles").read {c->
         CountCycle(c.getInt("number"),Instant.parse(c.getString("started")),c.optional("finished")?.let(Instant::parse),c.getInt("target"),
             c.getJSONArray("map").read(::readSegment),c.getJSONArray("doors").read {d->CountDoor(d.getString("id"),d.getString("segment"),d.getInt("number"),d.getInt("products"),DoorState.valueOf(d.getString("state")),d.getString("note"),d.optional("section"))},
-            c.optional("current"),c.getBoolean("paused"),c.getJSONArray("sessions").read {s->CountSession(s.getString("id"),Instant.parse(s.getString("started")),s.optional("ended")?.let(Instant::parse),s.optional("startDoor"),s.optional("endDoor"),s.getInt("products"),Submission.valueOf(s.getString("submission")),s.getString("note"))})
-    })
+            c.optional("current"),c.getBoolean("paused"),c.getJSONArray("sessions").read {s->CountSession(s.getString("id"),Instant.parse(s.getString("started")),s.optional("ended")?.let(Instant::parse),s.optional("startDoor"),s.optional("endDoor"),s.getInt("products"),Submission.valueOf(s.getString("submission")),s.getString("note"))},c.optBoolean("ownershipConfirmed",false))
+    },root.optJSONArray("previousMaps")?.let {a->(0 until a.length()).map {a.getJSONArray(it).read(::readSegment)}} ?: emptyList())
+    data.previousMaps.forEach(::validateMap)
     validateMap(data.map);require(data.revision>=0 && data.target in 1..100)
     require(data.cycles.count {it.finished==null}<=1 && data.cycles.map {it.number}.distinct().size==data.cycles.size)
     data.cycles.forEach {c->
@@ -38,5 +39,6 @@ internal fun decodeCountRoute(raw:String?):CountRouteData {
         require(c.sessions.count {it.ended==null}==if(c.paused || c.finished!=null)0 else 1)
         require(c.sessions.all {it.note.length<=1000 && it.id.isNotBlank()})
     }
-    return data.copy(map=data.map.map {it.forSectionEditing()})
+    val conversion=simplifyDoorMap(data.map)
+    return if(!isSimpleMap(data.map) && conversion.warnings.isEmpty())data.copy(map=conversion.map,previousMaps=data.previousMaps+listOf(data.map)) else data
 }

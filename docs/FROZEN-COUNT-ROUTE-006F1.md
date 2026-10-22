@@ -1,5 +1,7 @@
 # MVP-006F.1 — Frozen Count Route
 
+The section configuration below is superseded by [MVP-006F.1A: Simple Frozen door counts](FROZEN-DOOR-COUNTS-006F1A.md). It remains documented here for saved-data compatibility.
+
 ## Dependency and isolation
 
 Branch: `mvp-006f1-frozen-count-route`.
