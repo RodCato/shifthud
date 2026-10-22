@@ -21,14 +21,14 @@ class CountRouteStore(private val preferences:DataStore<Preferences>,private val
             if(old.revision==revision)values[key]=encodeCountRoute(update(old).copy(revision=old.revision+1))
         }
     }
-    suspend fun saveMap(revision:Long,map:List<RouteSegment>) {validateMap(map);change(revision) {it.copy(map=map)}}
+    suspend fun saveMap(revision:Long,map:List<RouteSegment>) {validateMap(map);change(revision) {it.copy(map=map,previousMaps=if(!isSimpleMap(it.map) && it.map!=map)it.previousMaps+listOf(it.map) else it.previousMaps)}}
     suspend fun target(revision:Long,target:Int) {
         require(target in 1..100) {"Choose a target from 1 to 100 products per door."}
         change(revision) {data->data.copy(target=target,cycles=data.cycles.map {if(it.finished==null)it.copy(target=target) else it})}
     }
     suspend fun start(revision:Long)=change(revision) {data->
         check(data.active==null) {"Finish the current cycle before starting another."}
-        require(data.map.all {it.sections!=null || it.excluded || it.count==null}) {"Review department ownership before starting a route."}
+        require(isSimpleMap(data.map)) {"Confirm your Frozen door counts in Door Map Setup before starting."}
         val doors=generateDoors(data.map);require(doors.isNotEmpty()) {"Configure at least one door first."}
         val now=clock.instant();val first=doors.first().id
         val cycle=CountCycle((data.cycles.maxOfOrNull {it.number} ?: 0)+1,now,target=data.target,map=data.map,doors=doors,current=first,
@@ -39,8 +39,9 @@ class CountRouteStore(private val preferences:DataStore<Preferences>,private val
         check(data.active?.number==cycle) {"This counting cycle is no longer active."}
         data.copy(cycles=data.cycles.map {if(it.number==cycle)update(it) else it})
     }
+    suspend fun confirmExistingRoute(revision:Long,cycle:Int)=active(revision,cycle) {it.copy(ownershipConfirmed=true)}
     suspend fun count(revision:Long,cycle:Int,door:String,undo:Boolean=false)=active(revision,cycle) {c->
-        check(c.ownershipKnown) {"Legacy route ownership is unknown. Finish this cycle and configure Frozen sections."}
+        check(c.ownershipKnown) {"Confirm that the existing route contains only Frozen doors before continuing."}
         check(!c.paused && c.current==door && c.currentDoor?.state==DoorState.OPEN)
         val current=requireNotNull(c.currentDoor)
         require(!undo || current.products>0)
@@ -51,12 +52,12 @@ class CountRouteStore(private val preferences:DataStore<Preferences>,private val
     }
     suspend fun resolve(revision:Long,cycle:Int,door:String,state:DoorState,note:String="")=active(revision,cycle) {c->
         require(state!=DoorState.OPEN && note.length<=1000)
-        check(c.ownershipKnown) {"Legacy route ownership is unknown. Finish this cycle and configure Frozen sections."}
+        check(c.ownershipKnown) {"Confirm that the existing route contains only Frozen doors before continuing."}
         check(!c.paused && c.current==door && c.currentDoor?.state==DoorState.OPEN)
         c.copy(doors=c.doors.map {if(it.id==door)it.copy(state=state,note=note.trim()) else it},current=c.nextOpen(door)?.id)
     }
     suspend fun revisit(revision:Long,cycle:Int,door:String)=active(revision,cycle) {c->
-        check(c.ownershipKnown) {"Legacy route ownership is unknown. Finish this cycle and configure Frozen sections."}
+        check(c.ownershipKnown) {"Confirm that the existing route contains only Frozen doors before continuing."}
         check(!c.paused)
         val selected=c.doors.single {it.id==door};check(selected.state!=DoorState.SAMPLED)
         c.copy(doors=c.doors.map {if(it.id==door)it.copy(state=DoorState.OPEN) else it},current=door)

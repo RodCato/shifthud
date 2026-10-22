@@ -2,7 +2,7 @@ package com.shifthud.frozen.count
 
 import java.time.Instant
 
-enum class WalkDirection(val label:String) { FRONT_BACK("Front → Back"), BACK_FRONT("Back → Front") }
+enum class WalkDirection(val label:String) { FRONT_BACK("Front → Back"), BACK_FRONT("Back → Front"), FINAL_SECTION("Final section") }
 enum class DoorState(val label:String) { OPEN("Not sampled"), SAMPLED("Location sampled"), SKIPPED("Skipped") }
 enum class Submission(val label:String) {
     NOT_SUBMITTED("Not submitted"), SUBMITTED("Submitted in SIMS"), AWAITING("Awaiting management approval"), APPROVED("Approved / verified"), RECOUNT("Recount requested")
@@ -22,7 +22,41 @@ fun initialDoorMap()=listOf(
     RouteSegment("A11-R",11,"Right",WalkDirection.FRONT_BACK), RouteSegment("A11-L",11,"Left",WalkDirection.BACK_FRONT),
     RouteSegment("A12-R",12,"Right",null), RouteSegment("A12-L",12,"Left",null)
 )
+fun simpleDoorMap()=initialDoorMap().take(4).map {it.copy(count=null)}+RouteSegment("A12-F",12,"Frozen",WalkDirection.FINAL_SECTION)
+fun isSimpleMap(map:List<RouteSegment>)=map.map {it.id}==listOf("A10-R","A10-L","A11-R","A11-L","A12-F")
+
+data class DoorMapConversion(val map:List<RouteSegment>,val warnings:List<String>)
+/** Only explicitly identified upright Frozen doors can be converted without confirmation. */
+fun simplifyDoorMap(old:List<RouteSegment>):DoorMapConversion {
+    if(isSimpleMap(old))return DoorMapConversion(old,emptyList())
+    validateMap(old)
+    val warnings=mutableListOf<String>()
+    fun total(s:RouteSegment):Int? {
+        if(s.excluded)return 0
+        val sections=s.sections
+        if(sections==null) {
+            if(s.count!=null)warnings.add("${s.label}: old total ${s.count} needs confirmation as Frozen doors.")
+            return null
+        }
+        if(sections.isEmpty())return null
+        if(sections.any {it.department==null || (it.department==SectionDepartment.FROZEN && (it.kind!=SectionKind.UPRIGHT || it.count==null))}) {
+            warnings.add("${s.label}: old sections cannot be converted to a confirmed Frozen-door total.")
+            return null
+        }
+        return sections.filter {it.department==SectionDepartment.FROZEN}.sumOf {requireNotNull(it.count)}
+    }
+    val counts=old.associate {it.id to total(it)}
+    val right=counts["A12-R"];val left=counts["A12-L"]
+    // A partially known A12 cannot be summed without inventing its missing half.
+    if((right==null || left==null) && (right!=null || left!=null))warnings.add("Aisle 12: confirm the combined Frozen-door count; one old side is unknown.")
+    val result=simpleDoorMap().map {it.copy(count=if(it.id=="A12-F") if(right!=null && left!=null)right+left else null else counts[it.id])}
+    return DoorMapConversion(result,warnings)
+}
 fun validateMap(segments:List<RouteSegment>) {
+    if(isSimpleMap(segments)) {
+        segments.zip(simpleDoorMap()).forEach {(s,expected)->require(s.aisle==expected.aisle && s.side==expected.side && s.direction==expected.direction && s.sections==null && !s.excluded && (s.count==null || s.count in 0..40000)) {"Enter a whole number from 0 to 40000, or leave blank."}}
+        return
+    }
     require(segments.size==6 && segments.take(4).map {it.id}==initialDoorMap().take(4).map {it.id} && segments.takeLast(2).map {it.id}.toSet()==setOf("A12-R","A12-L")) {"Keep Aisles 10 and 11 in confirmed walking order and configure both Aisle 12 sides."}
     segments.forEach { segment->
         val original=initialDoorMap().single {it.id==segment.id}
@@ -56,8 +90,8 @@ fun generateDoors(segments:List<RouteSegment>):List<CountDoor> {
 data class CountSession(val id:String,val started:Instant,val ended:Instant?=null,val startDoor:String?,val endDoor:String?=null,
     val products:Int=0,val submission:Submission=Submission.NOT_SUBMITTED,val note:String="")
 data class CountCycle(val number:Int,val started:Instant,val finished:Instant?=null,val target:Int,
-    val map:List<RouteSegment>,val doors:List<CountDoor>,val current:String?,val paused:Boolean=false,val sessions:List<CountSession>) {
-    val ownershipKnown get()=map.all {it.sections!=null || it.excluded || it.count==null}
+    val map:List<RouteSegment>,val doors:List<CountDoor>,val current:String?,val paused:Boolean=false,val sessions:List<CountSession>,val ownershipConfirmed:Boolean=false) {
+    val ownershipKnown get()=ownershipConfirmed || isSimpleMap(map) || map.all {it.sections!=null || it.excluded || it.count==null}
     val sampled get()=doors.count {it.state==DoorState.SAMPLED}
     val skipped get()=doors.count {it.state==DoorState.SKIPPED}
     val partial get()=doors.count {it.state==DoorState.OPEN && it.products>0}
@@ -75,14 +109,19 @@ data class CountCycle(val number:Int,val started:Instant,val finished:Instant?=n
         return (doors.drop(i+1)+doors.take((i+1).coerceAtLeast(0))).firstOrNull {it.id!=after && it.state==DoorState.OPEN}
     }
 }
-data class CountRouteData(val revision:Long=0,val map:List<RouteSegment> = initialDoorMap(),val target:Int=5,val cycles:List<CountCycle> = emptyList()) {
+data class CountRouteData(val revision:Long=0,val map:List<RouteSegment> = simpleDoorMap(),val target:Int=5,val cycles:List<CountCycle> = emptyList(),val previousMaps:List<List<RouteSegment>> = emptyList()) {
     val active get()=cycles.singleOrNull {it.finished==null}
 }
-fun mapChanges(before:List<RouteSegment>,after:List<RouteSegment>):List<String> = before.map {old->old to after.single {it.id==old.id}}.filter {it.first!=it.second}.map { (old,new)->
-    fun describe(s:RouteSegment):String {
+fun mapChanges(before:List<RouteSegment>,after:List<RouteSegment>):List<String> {
+    fun describe(s:RouteSegment?):String {
+        if(s==null)return "Not in route"
         if(s.excluded)return "Excluded"
         val sections=s.sections?.mapIndexed {index,section->"${section.label.ifBlank {"Section ${index+1}"}}: ${section.department?.label ?: "Ownership unknown"} · ${section.kind?.label ?: "Type unknown"} · ${section.count ?: "Count unknown"}"}?.joinToString("; ")?.ifBlank {"Not configured"}
-        return "${s.direction?.label ?: "Direction not configured"} · ${sections ?: s.count?.let {"$it unclassified locations"} ?: "Not configured"}"
+        return "${s.direction?.label ?: "Direction not configured"} · ${sections ?: s.count?.let {"$it doors"} ?: "Not configured"}"
     }
-    "${old.id}: ${describe(old)} → ${describe(new)}"
-} + if(before.takeLast(2).map {it.id}!=after.takeLast(2).map {it.id}) listOf("Aisle 12 walking order: ${before.takeLast(2).joinToString {it.side}} → ${after.takeLast(2).joinToString {it.side}}") else emptyList()
+    val changes=(before.map {it.id}+after.map {it.id}).distinct().mapNotNull {id->
+        val old=before.singleOrNull {it.id==id};val new=after.singleOrNull {it.id==id}
+        if(old==new)null else "$id: ${describe(old)} → ${describe(new)}"
+    }
+    return changes+if(before.map {it.id}.toSet()==after.map {it.id}.toSet() && before.map {it.id}!=after.map {it.id})listOf("Aisle 12 walking order changed") else emptyList()
+}
