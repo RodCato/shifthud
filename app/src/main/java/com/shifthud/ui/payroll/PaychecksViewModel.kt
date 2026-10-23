@@ -32,6 +32,15 @@ class PaychecksViewModel(private val app:ShiftHudApplication,private val saved:S
                 PaychecksState(draft,estimate(draft),checks.map{PayrollReconciliation(it,estimate(it))})
             }.onStart{emit(PaychecksState())}.catch{emit(PaychecksState(error="Paychecks unavailable. Please retry."))}
         }.flowOn(Dispatchers.Default).stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),PaychecksState())
+    val earningsError = MutableStateFlow<String?>(null)
+    val earningsRecords = refresh.flatMapLatest {
+        app.payroll.paychecks.map<List<Paycheck>, List<Paycheck>?> { it }
+            .onStart { earningsError.value=null }
+            .catch { earningsError.value="Saved payroll could not be loaded. Return to Paychecks and retry."; emit(null) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val coverage = combine(app.repository.sessions, app.payroll.paychecks, app.payRates.rates, ticks) { sessions, checks, rates, now ->
+        earningsCoverage(sessions, checks, rates, now, ZoneId.systemDefault(), estimator)
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     fun select(start:LocalDate,end:LocalDate) { saved["period"]="$start|$end" }
     fun week(date:LocalDate) { val w=workWeekFor(date);select(w.start,w.endInclusive) }
     fun retry(){refresh.value++}
