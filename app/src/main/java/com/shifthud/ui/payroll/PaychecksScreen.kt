@@ -21,6 +21,10 @@ import java.time.format.*
 @Composable fun PaychecksScreen(vm:PaychecksViewModel,back:()->Unit,importImage:(LocalDate,LocalDate)->Unit = {_,_->}) {
     val state by vm.state.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
+    var overview by rememberSaveable { mutableStateOf(false) }
+    val earningsRecords by vm.earningsRecords.collectAsStateWithLifecycle()
+    val earningsError by vm.earningsError.collectAsStateWithLifecycle()
+    val coverage by vm.coverage.collectAsStateWithLifecycle()
     var editing by rememberSaveable{mutableStateOf<String?>(null)}
     var selecting by rememberSaveable{mutableStateOf(false)}
     val list=rememberLazyListState()
@@ -33,8 +37,24 @@ import java.time.format.*
     fun moneyOrMissing(cents:Long?)=cents?.let{money(it,locale)}?:"Not entered"
     fun signed(cents:Long?)=cents?.let{(if(it>0)"+" else "")+money(it,locale)}?:"Not yet comparable"
     fun edit(value:Paycheck){editing=PayrollDraft.from(value).serialize()}
+    if (overview) {
+        androidx.activity.compose.BackHandler { overview=false }
+        if (earningsRecords==null) {
+            Column(Modifier.padding(20.dp)) {
+                TextButton(onClick={overview=false}) { Text("‹ BACK TO PAYCHECKS") }
+                if (earningsError!=null) { Text(earningsError!!); Button(onClick=vm::retry) { Text("RETRY") } }
+                else LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            return
+        }
+        EarningsOverviewScreen(earningsRecords!!, coverage, { overview=false }, {
+            vm.select(it.periodStart,it.periodEnd); overview=false
+        })
+        return
+    }
     LazyColumn(Modifier.fillMaxSize(),state=list,contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         item { TextButton(onClick=back){Text("‹ BACK")};Text("Paychecks",style=MaterialTheme.typography.headlineMedium);Text("Manual payroll comparison · Personal tracker, not official Publix payroll.",style=MaterialTheme.typography.bodySmall) }
+        item { OutlinedButton(onClick={overview=true}) { Text("VIEW EARNINGS OVERVIEW") } }
         if(state.error!=null)item{Text(state.error!!,color=MaterialTheme.colorScheme.error);Button(onClick=vm::retry){Text("RETRY")}}
         else if(p==null || state.estimate==null)item{LinearProgressIndicator(Modifier.fillMaxWidth())}
         else {

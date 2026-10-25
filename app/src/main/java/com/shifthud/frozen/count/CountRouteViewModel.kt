@@ -14,11 +14,12 @@ class CountRouteViewModel(private val store:CountRouteStore):ViewModel() {
     fun clearError() {_error.value=null}
     fun saveMap(data:CountRouteData,map:List<RouteSegment>,done:()->Unit)=write("map") {store.saveMap(data.revision,map);done()}
     fun target(data:CountRouteData,target:Int,done:()->Unit)=write("target") {store.target(data.revision,target);done()}
+    fun confirmExistingRoute(data:CountRouteData)=write("confirm-existing") {store.confirmExistingRoute(data.revision,requireNotNull(data.active).number)}
     fun start(data:CountRouteData)=write("start") {store.start(data.revision)}
     fun count(data:CountRouteData,undo:Boolean=false)=write("count:${data.active?.number}:${data.active?.current}:$undo") {
         val c=requireNotNull(data.active);store.count(data.revision,c.number,requireNotNull(c.current),undo)
     }
-    fun resolve(data:CountRouteData,state:DoorState,note:String="",done:()->Unit)=write("resolve:${data.active?.number}:${data.active?.current}") {
+    fun resolve(data:CountRouteData,state:DoorState,note:String="",done:()->Unit)=write("resolve:${data.active?.number}") {
         val c=requireNotNull(data.active);store.resolve(data.revision,c.number,requireNotNull(c.current),state,note);done()
     }
     fun revisit(data:CountRouteData,door:String)=write("revisit:$door") {store.revisit(data.revision,requireNotNull(data.active).number,door)}

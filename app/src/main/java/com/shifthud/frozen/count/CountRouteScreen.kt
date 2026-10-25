@@ -38,7 +38,7 @@ private fun dateTime(value:Instant)=DateTimeFormatter.ofLocalizedDateTime(Format
     var targetOpen by remember {mutableStateOf(false)}
     var resolving by remember {mutableStateOf<DoorState?>(null)}
     var finish by remember {mutableStateOf(false)}
-    var starting by remember {mutableStateOf(false)}
+    var confirmLegacy by remember {mutableStateOf(false)}
     var editingSession by remember {mutableStateOf<Pair<Int,CountSession>?>(null)}
     val cycle=data?.active
     val dark=androidx.compose.foundation.isSystemInDarkTheme()
@@ -48,50 +48,53 @@ private fun dateTime(value:Instant)=DateTimeFormatter.ofLocalizedDateTime(Format
         item {
             TextButton(onClick=back) {Text("Back to Frozen Tasks",Modifier.fillMaxWidth())}
             Text("FROZEN COUNT ROUTE",Modifier.fillMaxWidth(),style=MaterialTheme.typography.headlineSmall)
-            Text("Personal sampling progress. Official counts and approvals remain in authorized store systems.",Modifier.fillMaxWidth(),color=blue)
+
             error?.let {Text(it,color=MaterialTheme.colorScheme.error);TextButton(onClick=vm::clearError) {Text("Dismiss message",Modifier.fillMaxWidth())}}
         }
         if(data==null)item {Text("Loading Count Route…",Modifier.fillMaxWidth())}
         else {
             if(cycle!=null) {
                 item {
-                    Text("Cycle ${cycle.number} · Started ${dateTime(cycle.started)}",Modifier.fillMaxWidth(),style=MaterialTheme.typography.labelLarge)
-                    Coverage(cycle)
-                    if(!cycle.ownershipKnown)Text("Legacy route: department ownership was not recorded. Finish this cycle and configure Frozen sections before starting a new route. Existing counts are preserved.",Modifier.fillMaxWidth(),color=amber)
-                    if(cycle.map!=data.map)Text("Map edits are saved for the next cycle. This cycle keeps its original door map.",Modifier.fillMaxWidth(),color=blue)
-                }
-                item {
                     val door=cycle.currentDoor
                     if(door!=null) {
                         Text(if(cycle.paused) "Continue ${cycle.location(door)} — ${door.products}/${cycle.target}" else cycle.location(door),Modifier.fillMaxWidth(),style=MaterialTheme.typography.headlineSmall,color=amber)
                         Text("${door.id} · ${cycle.map.single {it.id==door.segmentId}.direction?.label}",Modifier.fillMaxWidth())
-                        Text("${door.products} / ${cycle.target} products counted",Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleLarge)
+                        Text("Products counted: ${door.products} / ${cycle.target}",Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleLarge)
                         val segment=cycle.doors.filter {it.segmentId==door.segmentId}
                         Text("Segment: ${segment.count {it.state==DoorState.SAMPLED}} / ${segment.size} locations sampled",Modifier.fillMaxWidth())
                         LinearProgressIndicator(progress={segment.count {it.state==DoorState.SAMPLED}.toFloat()/segment.size},modifier=Modifier.fillMaxWidth().semantics {contentDescription="Current segment sampling progress"})
-                        Text("Target is a guide. Complete Location confirms sampling, even below target.",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
+                        Text("Target is a guide; fewer or more is OK.",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
                         if(!cycle.paused && cycle.ownershipKnown) {
                             Button(onClick={vm.count(data)},enabled=!busy,modifier=Modifier.fillMaxWidth().heightIn(min=60.dp)) {Text("+1 Count",Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleLarge)}
-                            OutlinedButton(onClick={vm.count(data,true)},enabled=!busy && door.products>0,modifier=Modifier.fillMaxWidth()) {Text("Undo Last Count",Modifier.fillMaxWidth())}
-                            Button(onClick={resolving=DoorState.SAMPLED},enabled=!busy,modifier=Modifier.fillMaxWidth()) {Text("Complete Location",Modifier.fillMaxWidth())}
+                            OutlinedButton(onClick={vm.count(data,true)},enabled=!busy && door.products>0,modifier=Modifier.fillMaxWidth()) {Text("Undo",Modifier.fillMaxWidth())}
+                            Button(onClick={vm.resolve(data,DoorState.SAMPLED,door.note) {}},enabled=!busy,modifier=Modifier.fillMaxWidth()) {Text("Complete Door / Next Door",Modifier.fillMaxWidth())}
                             OutlinedButton(onClick={resolving=DoorState.SKIPPED},enabled=!busy,modifier=Modifier.fillMaxWidth()) {Text("Skip Location",Modifier.fillMaxWidth())}
                         }
                         val next=cycle.nextOpen(door.id)
                         Text(next?.let {"Next: ${cycle.location(it)}"} ?: "Next: Review skipped locations or finish this cycle",Modifier.fillMaxWidth(),color=blue)
                     } else Text("No pending door selected. Revisit skipped locations below or finish the counting cycle.",Modifier.fillMaxWidth())
-                    if(cycle.paused)Button(onClick={vm.resume(data)},enabled=!busy,modifier=Modifier.fillMaxWidth()) {Text("Resume Session",Modifier.fillMaxWidth())}
-                    else OutlinedButton(onClick={vm.pause(data)},enabled=!busy,modifier=Modifier.fillMaxWidth()) {Text("Pause Session",Modifier.fillMaxWidth())}
+                    if(cycle.paused)Button(onClick={vm.resume(data)},enabled=!busy,modifier=Modifier.fillMaxWidth()) {Text("Resume",Modifier.fillMaxWidth())}
+                    else OutlinedButton(onClick={vm.pause(data)},enabled=!busy,modifier=Modifier.fillMaxWidth()) {Text("Pause",Modifier.fillMaxWidth())}
                     Text(if(cycle.paused) "Paused · progress saved" else "Each action is saved automatically",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
+                }
+                item {
+                    Text("Cycle ${cycle.number} · Started ${dateTime(cycle.started)}",Modifier.fillMaxWidth(),style=MaterialTheme.typography.labelLarge)
+                    Coverage(cycle)
+                    if(!cycle.ownershipKnown) {
+                        Text("Confirm the saved route before continuing. Counts and position are preserved.",Modifier.fillMaxWidth(),color=amber)
+                        TextButton(onClick={confirmLegacy=true}) {Text("Confirm existing route",Modifier.fillMaxWidth())}
+                    }
+                    if(cycle.map!=data.map)Text("Map edits are saved for the next cycle. This cycle keeps its original door map.",Modifier.fillMaxWidth(),color=blue)
                 }
             }
             item {
-                OutlinedButton(onClick=openMap,enabled=!busy,modifier=Modifier.fillMaxWidth()) {Text("Configure door map",Modifier.fillMaxWidth())}
+                OutlinedButton(onClick=openMap,enabled=!busy,modifier=Modifier.fillMaxWidth()) {Text("Door Map Setup",Modifier.fillMaxWidth())}
                 TextButton(onClick={targetOpen=true},enabled=!busy) {Text("Target: ${data.target} products per location · Change",Modifier.fillMaxWidth())}
                 if(cycle==null) {
-                    Text("${generateDoors(data.map).size} configured locations · ${data.map.count {!it.configured}} segments not configured",Modifier.fillMaxWidth())
-                    if(!data.map.all {it.configured})Text("Map incomplete. Configure or explicitly exclude every required segment before claiming route coverage.",Modifier.fillMaxWidth())
-                    Button(onClick={starting=true},enabled=!busy && generateDoors(data.map).isNotEmpty(),modifier=Modifier.fillMaxWidth()) {Text("Start New Counting Cycle",Modifier.fillMaxWidth())}
-                    if(generateDoors(data.map).isEmpty())Text("Configure at least one door to begin. Unknown counts do not create doors.",Modifier.fillMaxWidth())
+                    Text("${simplifyDoorMap(data.map).map.let(::generateDoors).size} configured Frozen doors · ${data.map.count {!it.configured}} segments not configured",Modifier.fillMaxWidth())
+                    if(!data.map.all {it.configured})Text("Partial map — unknown segments can be filled in later.",Modifier.fillMaxWidth())
+                    Button(onClick={vm.start(data)},enabled=!busy && isSimpleMap(data.map) && generateDoors(data.map).isNotEmpty(),modifier=Modifier.fillMaxWidth()) {Text("Start New Counting Cycle",Modifier.fillMaxWidth())}
+                    if(!isSimpleMap(data.map))Text("Review old counts in Door Map Setup before starting a new cycle.",Modifier.fillMaxWidth()) else if(generateDoors(data.map).isEmpty())Text("Enter at least one Frozen door to begin.",Modifier.fillMaxWidth())
                 }
             }
             if(cycle!=null) {
@@ -132,7 +135,8 @@ private fun dateTime(value:Instant)=DateTimeFormatter.ofLocalizedDateTime(Format
             OutlinedTextField(text,{text=it},label={Text("Products per door (1–100)",Modifier.fillMaxWidth())},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),modifier=Modifier.fillMaxWidth())
         }},confirmButton={CountDialogActions("Save target",!busy && target!=null && target in 1..100,{vm.target(data,requireNotNull(target)) {targetOpen=false}},{targetOpen=false})})
     }
-    if(data!=null && starting)Confirm("Start counting cycle?","Uses the saved door map. ${generateDoors(data.map).size} doors; ${data.map.count {!it.configured}} segments still not configured. Prior cycles are preserved.","Start cycle",busy,{starting=false}) {vm.start(data);starting=false}
+    if(data!=null && cycle!=null && confirmLegacy)Confirm("Continue saved route?","Confirm that every location in this saved route is a Frozen door. Existing counts, location identifiers and session history will stay unchanged. If unsure, cancel and keep the old route preserved.","Confirm Frozen route",busy,{confirmLegacy=false}) {vm.confirmExistingRoute(data);confirmLegacy=false}
+
     if(data!=null && cycle!=null && resolving!=null) {
         var note by remember {mutableStateOf(cycle.currentDoor?.note.orEmpty())};val state=requireNotNull(resolving)
         AlertDialog(onDismissRequest={resolving=null},title={Text(if(state==DoorState.SAMPLED) "Confirm location sampled" else "Skip this location?")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
