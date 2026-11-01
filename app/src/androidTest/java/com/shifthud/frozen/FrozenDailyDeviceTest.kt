@@ -51,6 +51,28 @@ class FrozenDailyDeviceTest {
         ui.waitUntil(10000) {runBlocking {store.tasks.first().any{it.title=="Synthetic daily task" && it.state==FrozenState.COMPLETED}}}
         assertTrue(runBlocking {store.tasks.first()}.all{it.date==today})
     }
+    @Test fun sundayLoadsSevenIndependentResponsibilitiesWithoutSetup()=runBlocking {
+        val sunday=LocalDate.of(2026,11,1)
+        val vm=FrozenTasksViewModel(store,automatic=true).also{models.put("daily",it)}
+        ui.setContent {ShiftHudTheme {Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {
+            FrozenDailyScreen(vm,{}, {},currentDate={sunday})
+        }}}
+        ui.waitUntil(10000) {runBlocking {store.tasks.first().size==7}}
+        ui.onNodeWithText("Frozen Workflow").assertIsDisplayed()
+        ui.onNodeWithText("No weekday template is defined. Saved tasks and outstanding carryovers are shown.").assertDoesNotExist()
+        capture("sunday")
+        val template=sundayFrozenTemplate(sunday)
+        template.forEach { task ->
+            show(task.title)
+            ui.onNodeWithContentDescription("Complete ${task.title}").assertHasClickAction()
+        }
+        show(template.first().title)
+        ui.onNodeWithContentDescription("Complete ${template.first().title}").performClick()
+        ui.waitUntil(10000) {runBlocking {store.tasks.first().count{it.state==FrozenState.COMPLETED}==1}}
+        assertTrue(store.tasks.first().drop(1).all {it.state==FrozenState.TODO})
+        store.openDaily(sunday)
+        assertEquals(1,store.tasks.first().count{it.state==FrozenState.COMPLETED})
+    }
     @Test fun midnightChangesChecklistWithoutResettingCompletedSources()=runBlocking {
         val monday=LocalDate.of(2026,11,2)
         var date=monday

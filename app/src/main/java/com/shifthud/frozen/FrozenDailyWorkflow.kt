@@ -6,6 +6,7 @@ import java.time.LocalDate
 const val DAILY_PREFIX="daily:"
 fun dailyWorkflowId(date:LocalDate)="$DAILY_PREFIX$date"
 fun dailyFrozenTemplate(date:LocalDate):List<FrozenTask> = when(date.dayOfWeek) {
+    DayOfWeek.SUNDAY -> sundayFrozenTemplate(date)
     DayOfWeek.MONDAY -> if(date==FROZEN_MONDAY) mondayFrozenTemplate() else mondayFrozenTemplate().mapIndexed { index,task ->
         task.copy(id="monday-$date-${index+1}",date=date,workflows=listOf(dailyWorkflowId(date)),section="TODAY'S RESPONSIBILITIES")
     }
@@ -15,6 +16,8 @@ fun dailyFrozenTemplate(date:LocalDate):List<FrozenTask> = when(date.dayOfWeek) 
 }
 /** Identity mappings only; editable titles and OCR product names never imply equivalence. */
 internal fun dailyTaskDefinition(task:FrozenTask):String {
+    val sunday=sundayFrozenTemplate(task.date).indexOfFirst { it.id==task.id }
+    if(sunday>=0) return when(sunday) { 1->"replenish-ad-wall";2->"run-backstock";else->"sunday-step-$sunday" }
     val monday=mondayFrozenTemplate().indices.firstOrNull { index ->
         task.id==mondayFrozenTemplate()[index].id || task.id=="monday-${task.date}-${index+1}"
     } ?: -1

@@ -24,13 +24,20 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
     val tasks=store.data.map { decode(it[key]) }
     suspend fun initialize() { store.guardedEdit { if(it[key]==null) it[key]=encode(mondayFrozenTemplate()) else decode(it[key]);decodeTrucks(it[trucksKey]) } }
     private val dailyDatesKey=stringSetPreferencesKey("daily_workflow_dates")
+    private val sundayDatesKey=stringSetPreferencesKey("sunday_template_dates")
     val dailyDates=store.data.map { values -> values[dailyDatesKey].orEmpty().map(LocalDate::parse).sortedDescending() }
     /** Initializes only missing templates. Existing tasks, notes, punches and assignment state are untouched. */
     suspend fun openDaily(date:LocalDate) { store.guardedEdit { values ->
         val existing=decode(values[key]);val workflow=dailyWorkflowId(date)
         val dates=values[dailyDatesKey].orEmpty()
         val alreadyExists=date.toString() in dates || existing.any { it.date==date }
-        val additions=if(alreadyExists) emptyList() else dailyFrozenTemplate(date)
+        // Earlier builds recorded Sundays as initialized without registering a template.
+        // Repair once per date, retaining all existing IDs, edits and completion history.
+        val sundayDates=values[sundayDatesKey].orEmpty()
+        val registerSunday=date.dayOfWeek==DayOfWeek.SUNDAY && date.toString() !in sundayDates
+        val additions=if(registerSunday) sundayFrozenTemplate(date).filter { candidate -> existing.none { it.id==candidate.id } }
+            else if(alreadyExists) emptyList() else dailyFrozenTemplate(date)
+        if(registerSunday) values[sundayDatesKey]=sundayDates+date.toString()
         val linked=(existing+additions).map { task ->
             if((task.date==date || unfinishedForDate(task,date)) && workflow !in task.workflows) task.copy(workflows=task.workflows+workflow) else task
         }
