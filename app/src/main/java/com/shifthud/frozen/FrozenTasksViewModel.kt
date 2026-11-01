@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
-class FrozenTasksViewModel(private val store:FrozenTaskStore):ViewModel() {
+class FrozenTasksViewModel(private val store:FrozenTaskStore, private val automatic:Boolean=false):ViewModel() {
     private val _error=MutableStateFlow<String?>(null)
     private val _tasks=MutableStateFlow<List<FrozenTask>?>(null)
     val tasks=_tasks.asStateFlow()
@@ -24,10 +24,17 @@ class FrozenTasksViewModel(private val store:FrozenTaskStore):ViewModel() {
     val error=_error.asStateFlow()
     private val _busy=MutableStateFlow(false)
     val busy=_busy.asStateFlow()
-    init { viewModelScope.launch { try { store.initialize();store.tasks.collect { _tasks.value=it } }
+    init { viewModelScope.launch { try { if(!automatic)store.initialize();store.tasks.collect { _tasks.value=it } }
         catch(e:CancellationException) { throw e }
         catch(e:Exception) { _error.value="Frozen Tasks could not load. Your saved data has not been replaced. ${e.message}" }
     } }
+    val dailyDates=store.dailyDates.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
+    suspend fun openDaily(date:java.time.LocalDate) {
+        try { store.openDaily(date) }
+        catch(e:CancellationException) { throw e }
+        catch(e:Exception) { _error.value="Daily checklist could not load. Saved work is preserved. ${e.message}" }
+    }
+    fun dailyState(date:java.time.LocalDate,id:String,state:FrozenState)=write { store.setDailyState(date,id,state) }
     fun clearError() { _error.value=null }
     fun state(id:String,state:FrozenState)=write { store.setState(id,state) }
     fun save(id:String?,title:String,description:String,notes:String,done:()->Unit)=write {

@@ -7,8 +7,8 @@ import java.time.ZoneId
 const val WEDNESDAY_PREFIX="wednesday:"
 fun wednesdayWorkflowId(date:LocalDate)="$WEDNESDAY_PREFIX$date"
 fun isWednesdayWorkflow(id:String)=id.startsWith(WEDNESDAY_PREFIX)
-fun frozenWorkflowDate(id:String):LocalDate=LocalDate.parse(id.removePrefix(WEDNESDAY_PREFIX))
-fun frozenWorkflowLabel(id:String)=if(isWednesdayWorkflow(id)) "Wednesday — Frozen Truck" else "Tuesday workflow"
+fun frozenWorkflowDate(id:String):LocalDate=LocalDate.parse(id.removePrefix(WEDNESDAY_PREFIX).removePrefix(DAILY_PREFIX))
+fun frozenWorkflowLabel(id:String)=if(id.startsWith(DAILY_PREFIX)) "Daily Frozen workflow" else if(isWednesdayWorkflow(id)) "Wednesday — Frozen Truck" else "Tuesday workflow"
 
 data class TruckArrivalEvent(val arrived:Boolean,val at:Instant,val zone:String)
 data class FrozenTruckWorkflow(val date:LocalDate,val taskIds:List<String>,val events:List<TruckArrivalEvent> = emptyList()) {

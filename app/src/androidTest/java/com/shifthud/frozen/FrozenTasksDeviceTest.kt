@@ -17,20 +17,32 @@ import com.shifthud.ui.theme.ShiftHudTheme
 import org.junit.*
 import org.junit.Assert.*
 import java.time.Instant
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 
 class FrozenTasksDeviceTest {
     @get:Rule val ui=createComposeRule()
     @Test fun dashboardEntryAndWeekNavigationAreIndependent() {
+        val app=InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as com.shifthud.ShiftHudApplication
+        val sessions=runBlocking {app.repository.sessions.first()}
+        val payroll=runBlocking {app.payroll.paychecks.first()}
+        val original=runBlocking {app.frozenTasks.tasks.first()}
         ActivityScenario.launch(MainActivity::class.java).use {
             ui.onNodeWithText("FROZEN TASKS").performScrollTo().performClick()
-            ui.onNodeWithText(FROZEN_TITLE).assertIsDisplayed()
-            ui.onNodeWithContentDescription("Back to Dashboard").performClick()
+            ui.onNodeWithText("Frozen Workflow").assertIsDisplayed()
+            ui.onNodeWithText("Dashboard",useUnmergedTree=true).performClick()
             ui.onNodeWithText("Schedule",useUnmergedTree=true).performClick()
             ui.onNodeWithContentDescription("Next week").performClick()
             ui.onNodeWithContentDescription("Previous week").performClick()
-            ui.onNodeWithText("Dashboard",useUnmergedTree=true).performClick()
-            ui.onNodeWithText("FROZEN TASKS").performScrollTo().performClick()
-            ui.onNodeWithText(FROZEN_TITLE).assertIsDisplayed()
+            ui.onNodeWithText("Tasks",useUnmergedTree=true).performClick()
+            ui.onNodeWithText("Frozen Workflow").assertIsDisplayed()
+        }
+        assertTrue("Viewing Tasks changed work sessions",sessions==runBlocking {app.repository.sessions.first()})
+        assertTrue("Viewing Tasks changed employer payroll",payroll==runBlocking {app.payroll.paychecks.first()})
+        val after=runBlocking {app.frozenTasks.tasks.first()}
+        original.forEach { previous ->
+            val current=after.single {it.id==previous.id}
+            assertEquals(previous.copy(workflows=current.workflows),current)
         }
     }
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)

@@ -11,7 +11,7 @@ data class FrozenTask(val id: String, val date: LocalDate, val title: String, va
     val state: FrozenState = FrozenState.TODO, val notes: String = "", val history: List<FrozenEvent> = emptyList(),
     val workflows: List<String> = emptyList(), val section: String = "", val sku: String = "", val plan: String = "",
     val family:String="", val category:String="Unassigned", val eligible:List<EndcapProduct> = emptyList(),
-    val chosen:List<String> = emptyList(), val sourceNames:List<String> = emptyList(),val sourceSkus:List<String> = emptyList())
+    val chosen:List<String> = emptyList(), val sourceNames:List<String> = emptyList(),val sourceSkus:List<String> = emptyList(),val carryoverExcluded:Boolean=false)
 
 val FROZEN_MONDAY: LocalDate = LocalDate.of(2026,10,19)
 const val FROZEN_TITLE = "Frozen — Monday Solo Shift"
@@ -52,4 +52,5 @@ fun tuesdayFrozenTemplate(date: LocalDate): List<FrozenTask> {
 
 fun frozenWorkflowTasks(tasks: List<FrozenTask>, workflow: String): List<FrozenTask> =
     if(workflow.isBlank()) tasks.filter { it.workflows.isEmpty() || it.date==FROZEN_MONDAY }
+    else if(workflow.startsWith(DAILY_PREFIX)) tasks.filter { it.date<=frozenWorkflowDate(workflow) && (workflow in it.workflows || it.date==frozenWorkflowDate(workflow)) }
     else tasks.filter { workflow in it.workflows || (it.state==FrozenState.CARRY_OVER && (!isWednesdayWorkflow(workflow) || it.date<=frozenWorkflowDate(workflow))) }

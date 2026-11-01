@@ -40,6 +40,22 @@ class QuickFindNavigationTest {
             assertEquals("Dashboard",nav.currentDestination?.route)
         } finally {activity.pause().stop().destroy()}
     }
+    @Test fun tasksTabRestoresSavedStateAndBackReturnsToDashboard() {
+        val activity=Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            val nav=NavHostController(activity.get())
+            nav.setLifecycleOwner(activity.get());nav.setViewModelStore(activity.get().viewModelStore)
+            nav.navigatorProvider.addNavigator(ComposeNavigator())
+            nav.graph=nav.createGraph(startDestination="Dashboard") {
+                listOf("Dashboard","Schedule","Tasks","Quick Find","Settings","FrozenCountRoute").forEach { route->composable(route) {} }
+            }
+            nav.selectTab("Tasks");nav.currentBackStackEntry!!.savedStateHandle["scroll-position"]=7
+            nav.navigate("FrozenCountRoute");nav.selectTab("Schedule");nav.selectTab("Tasks")
+            assertEquals("Tasks",nav.currentDestination?.route)
+            assertEquals(7,nav.currentBackStackEntry!!.savedStateHandle.get<Int>("scroll-position"))
+            nav.popBackStack();assertEquals("Dashboard",nav.currentDestination?.route)
+        } finally {activity.pause().stop().destroy()}
+    }
     @Test fun widgetIntentTargetsMainQuickFindAndReusesActivity() {
         val intent=widgetDestinationIntent(RuntimeEnvironment.getApplication(),QUICK_FIND_DESTINATION)
         assertEquals(MainActivity::class.java.name,intent.component!!.className)
