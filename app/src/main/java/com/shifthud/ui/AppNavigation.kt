@@ -10,4 +10,6 @@ fun NavHostController.selectTab(destination: String) {
         // Dashboard must return to the actual start screen, not restore that child stack.
         restoreState = destination != "Dashboard"
     }
+    // The Tasks tab always opens its checklist, while retaining the root's saved scroll state.
+    if(destination=="Tasks" && currentDestination?.route!="Tasks") popBackStack("Tasks",false)
 }

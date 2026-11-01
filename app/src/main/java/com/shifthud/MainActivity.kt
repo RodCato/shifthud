@@ -1,6 +1,7 @@
 package com.shifthud
 
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import android.os.Bundle
 import android.os.Build
 import android.Manifest
@@ -102,13 +103,20 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(error) { error?.let { snackbar.showSnackbar(it); vm.clearError() } }
                 Scaffold(snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
                     NavigationBar {
-                        listOf("Dashboard", "Schedule", "Quick Find", "Settings").forEach { destination ->
-                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard").let { it == destination || (it == "ScheduleImport" && destination == "Schedule") || (it == "HistoricalImport" && destination == "Settings") || ((it == "FrozenTasks" || it == "FrozenCountRoute" || it == "Analytics" || it.startsWith("Paychecks") || it.startsWith("PaystubImport")) && destination == "Dashboard") }, onClick = { if (destination == "Quick Find") quickFindFocusRequest++; nav.selectTab(destination) }, icon = { if (destination == "Quick Find") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_search), contentDescription = null) else Text(destination.take(1)) }, label = { Text(destination) })
+                        listOf("Dashboard", "Schedule", "Tasks", "Quick Find", "Settings").forEach { destination ->
+                            NavigationBarItem(selected = (entry?.destination?.route ?: "Dashboard").let { it == destination || ((it == "FrozenTasks" || it == "FrozenCountRoute") && destination == "Tasks") || (it == "ScheduleImport" && destination == "Schedule") || (it == "HistoricalImport" && destination == "Settings") || ((it == "Analytics" || it.startsWith("Paychecks") || it.startsWith("PaystubImport")) && destination == "Dashboard") }, onClick = { if (destination == "Quick Find") quickFindFocusRequest++; nav.selectTab(destination) }, icon = { if (destination == "Quick Find") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_search), contentDescription = null) else if(destination=="Tasks") Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_tasks),contentDescription=null) else Text(destination.take(1)) }, label = { Text(destination,style=MaterialTheme.typography.labelSmall.copy(letterSpacing=0.sp)) })
                         }
                     }
                 }) { padding ->
                     NavHost(nav, startDestination = "Dashboard", modifier = Modifier.padding(padding)) {
-                        composable("Dashboard") { DashboardScreen(data, vm, busy, openFrozenTasks={nav.navigate("FrozenTasks") { launchSingleTop=true }}, openSchedule={nav.selectTab("Schedule")}, openAnalytics={ nav.navigate("Analytics") { launchSingleTop = true } },openPaychecks={ nav.navigate("Paychecks/${com.shifthud.domain.pay.workWeekFor(java.time.LocalDate.now()).start}") }) }
+                        composable("Dashboard") { DashboardScreen(data, vm, busy, openFrozenTasks={nav.selectTab("Tasks")}, openSchedule={nav.selectTab("Schedule")}, openAnalytics={ nav.navigate("Analytics") { launchSingleTop = true } },openPaychecks={ nav.navigate("Paychecks/${com.shifthud.domain.pay.workWeekFor(java.time.LocalDate.now()).start}") }) }
+                        composable("Tasks") {
+                            val frozen: com.shifthud.frozen.FrozenTasksViewModel = viewModel(factory=object:ViewModelProvider.Factory {
+                                @Suppress("UNCHECKED_CAST")
+                                override fun <T:ViewModel> create(modelClass:Class<T>):T = com.shifthud.frozen.FrozenTasksViewModel((application as ShiftHudApplication).frozenTasks,automatic=true) as T
+                            })
+                            com.shifthud.frozen.FrozenDailyScreen(frozen,openCountRoute={nav.navigate("FrozenCountRoute")},openManual={nav.navigate("FrozenTasks")})
+                        }
                         composable("FrozenTasks") {
                             val frozen: com.shifthud.frozen.FrozenTasksViewModel = viewModel(factory=object:ViewModelProvider.Factory {
                                 @Suppress("UNCHECKED_CAST")
