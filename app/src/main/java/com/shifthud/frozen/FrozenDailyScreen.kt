@@ -39,7 +39,7 @@ import java.time.LocalDate
         EndcapImportScreen(vm,date) {importing=false}
     } else FrozenTasksContent(if(loaded==date) rows?.map { it.task } else null,busy,error,vm::clearError,{},
         { id,state->vm.dailyState(date,id,state) },vm::save,workflow=dailyWorkflowId(date),dailyDate=date,
-        sources=rows.orEmpty().associate { it.task.id to it.sources },listState=listState,
+        dismissTask={vm.dismissDaily(date,it)},sources=rows.orEmpty().associate { it.task.id to it.sources },listState=listState,
         controls={
             TextButton(onClick={tools=!tools}) {Text("Workflow tools & history",Modifier.fillMaxWidth())}
             if(tools) {

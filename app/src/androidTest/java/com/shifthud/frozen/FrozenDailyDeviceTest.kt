@@ -8,7 +8,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.*
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.*
 import androidx.test.platform.app.InstrumentationRegistry
 import com.shifthud.ui.theme.ShiftHudTheme
 import kotlinx.coroutines.*
@@ -24,7 +24,8 @@ class FrozenDailyDeviceTest {
     private val models=androidx.lifecycle.ViewModelStore()
     private val job=SupervisorJob()
     private val file=File(context.cacheDir,"daily-frozen-isolated.preferences_pb")
-    private val store=FrozenTaskStore(PreferenceDataStoreFactory.create(scope=CoroutineScope(Dispatchers.IO+job),produceFile={file}))
+    private val dataStore=PreferenceDataStoreFactory.create(scope=CoroutineScope(Dispatchers.IO+job),produceFile={file})
+    private val store=FrozenTaskStore(dataStore)
     @After fun close()=runBlocking {ui.runOnIdle {models.clear()};job.cancelAndJoin();file.delete();Unit}
     private fun show(text:String) {ui.onNode(hasScrollAction()).performScrollToNode(hasText(text))}
     private fun capture(name:String) {
@@ -53,13 +54,23 @@ class FrozenDailyDeviceTest {
     }
     @Test fun sundayLoadsSevenIndependentResponsibilitiesWithoutSetup()=runBlocking {
         val sunday=LocalDate.of(2026,11,1)
+        val historical=(mondayFrozenTemplate().take(4)+wednesdayFrozenTemplate(LocalDate.of(2026,10,21)).take(3))
+            .map {it.copy(state=FrozenState.CARRY_OVER,workflows=it.workflows+dailyWorkflowId(sunday))}
+        dataStore.edit { values ->
+            values[stringPreferencesKey("tasks_v1")]=store.encode(historical)
+            values[stringSetPreferencesKey("daily_workflow_dates")]=setOf(sunday.toString())
+        }
         val vm=FrozenTasksViewModel(store,automatic=true).also{models.put("daily",it)}
         ui.setContent {ShiftHudTheme {Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {
             FrozenDailyScreen(vm,{}, {},currentDate={sunday})
         }}}
-        ui.waitUntil(10000) {runBlocking {store.tasks.first().size==7}}
+        ui.waitUntil(10000) {runBlocking {store.tasks.first().size==14}}
         ui.onNodeWithText("Frozen Workflow").assertIsDisplayed()
+        ui.onNodeWithText("CARRYOVERS (0)").assertDoesNotExist()
         ui.onNodeWithText("No weekday template is defined. Saved tasks and outstanding carryovers are shown.").assertDoesNotExist()
+        assertEquals(7,store.tasks.first().count{it.carryoverArchived})
+        assertEquals(7,dailyFrozenRows(store.tasks.first(),sunday).size)
+        historical.forEach {old->assertEquals(old.copy(carryoverArchived=true),store.tasks.first().single{it.id==old.id})}
         capture("sunday")
         val template=sundayFrozenTemplate(sunday)
         template.forEach { task ->
@@ -69,7 +80,7 @@ class FrozenDailyDeviceTest {
         show(template.first().title)
         ui.onNodeWithContentDescription("Complete ${template.first().title}").performClick()
         ui.waitUntil(10000) {runBlocking {store.tasks.first().count{it.state==FrozenState.COMPLETED}==1}}
-        assertTrue(store.tasks.first().drop(1).all {it.state==FrozenState.TODO})
+        assertTrue(store.tasks.first().filter{it.date==sunday && it.id!=template.first().id}.all {it.state==FrozenState.TODO})
         store.openDaily(sunday)
         assertEquals(1,store.tasks.first().count{it.state==FrozenState.COMPLETED})
     }
@@ -88,7 +99,7 @@ class FrozenDailyDeviceTest {
         assertFalse(dailyFrozenRows(store.tasks.first(),date).any{row->row.sources.any{it.id==first.id}})
     }
     @Test fun mergedCarryoverShowsDatesAndSourcesAtLargeFonts()=runBlocking {
-        val monday=LocalDate.of(2026,11,2)
+        val monday=LocalDate.of(2026,11,9)
         store.openDaily(monday.minusDays(6));store.openDaily(monday)
         val rows=dailyFrozenRows(store.tasks.first(),monday)
         ui.setContent {ShiftHudTheme {val d=LocalDensity.current

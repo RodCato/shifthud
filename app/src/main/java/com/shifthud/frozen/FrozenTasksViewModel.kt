@@ -34,6 +34,7 @@ class FrozenTasksViewModel(private val store:FrozenTaskStore, private val automa
         catch(e:CancellationException) { throw e }
         catch(e:Exception) { _error.value="Daily checklist could not load. Saved work is preserved. ${e.message}" }
     }
+    fun dismissDaily(date:java.time.LocalDate,id:String)=write { store.dismissDaily(date,id) }
     fun dailyState(date:java.time.LocalDate,id:String,state:FrozenState)=write { store.setDailyState(date,id,state) }
     fun clearError() { _error.value=null }
     fun state(id:String,state:FrozenState)=write { store.setState(id,state) }

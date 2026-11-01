@@ -42,7 +42,7 @@ class FrozenTasksDeviceTest {
         val after=runBlocking {app.frozenTasks.tasks.first()}
         original.forEach { previous ->
             val current=after.single {it.id==previous.id}
-            assertEquals(previous.copy(workflows=current.workflows),current)
+            assertEquals(previous.copy(workflows=current.workflows,carryoverArchived=previous.carryoverArchived || (previous.date<FROZEN_CARRYOVER_BASELINE && previous.state!=FrozenState.COMPLETED)),current)
         }
     }
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)

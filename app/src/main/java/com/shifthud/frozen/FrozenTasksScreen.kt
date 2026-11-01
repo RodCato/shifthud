@@ -40,7 +40,7 @@ import java.time.format.DateTimeFormatter
     back:()->Unit,changeState:(String,FrozenState)->Unit,save:(String?,String,String,String,()->Unit)->Unit,
     workflow:String="",controls:@Composable ()->Unit={},removeProduct:(String)->Unit={},
     editProduct:(String,String,String,()->Unit)->Unit={_,_,_,_->},truck:FrozenTruckWorkflow?=null,truckArrival:(Boolean)->Unit={},chooseVariety:(String,EndcapProduct,Boolean)->Unit={_,_,_->},
-    dailyDate:java.time.LocalDate?=null,sources:Map<String,List<FrozenTask>> = emptyMap(),
+    dismissTask:((String)->Unit)?=null,dailyDate:java.time.LocalDate?=null,sources:Map<String,List<FrozenTask>> = emptyMap(),
     listState:androidx.compose.foundation.lazy.LazyListState=androidx.compose.foundation.lazy.rememberLazyListState()) {
     var carryOpen by rememberSaveable(workflow) { mutableStateOf(true) }
     var completedOpen by rememberSaveable(workflow) { mutableStateOf(false) }
@@ -101,7 +101,7 @@ import java.time.format.DateTimeFormatter
             listOf("MORNING TRANSITION","ENDCAP — PICK FOR LAYOUT","ENDCAP — BUILD LAYOUT","MIDSHIFT","END OF SHIFT — FINAL FILL").map { section ->
                 Triple(section,groups.active.filter { it.section==section || (section=="MORNING TRANSITION" && it.section.isBlank()) },closedSections[section]!=true)
             } + listOf(Triple("COMPLETED",groups.completed,completedOpen))
-        if(tasks!=null) sections.forEach { (label,rows,open) ->
+        if(tasks!=null) sections.filterNot { dailyDate!=null && it.first=="CARRYOVERS" && it.second.isEmpty() }.forEach { (label,rows,open) ->
             item(key="section-$label") {
                 if(dailyDate!=null && label==sections.getOrNull(1)?.first && label!="COMPLETED" && label!="TODAY'S RESPONSIBILITIES") Text("TODAY'S RESPONSIBILITIES",style=MaterialTheme.typography.titleSmall)
 
@@ -121,7 +121,7 @@ import java.time.format.DateTimeFormatter
                 Text(task.title,Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleMedium,
                     color=if(task.state==FrozenState.COMPLETED) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
             },subtitleContent={
-                Text(task.state.label,Modifier.fillMaxWidth(),color=color,style=MaterialTheme.typography.bodyMedium)
+                Text(if(task.carryoverArchived) "Archived carryover · fresh start Nov 1" else if(task.carryoverExcluded) "Dismissed" else task.state.label,Modifier.fillMaxWidth(),color=color,style=MaterialTheme.typography.bodyMedium)
                 if(dailyDate!=null) {
                     val origins=sources[task.id].orEmpty()
                     if(origins.any { it.state==FrozenState.BLOCKED }) Text("Blocked",color=red,style=MaterialTheme.typography.bodySmall)
@@ -154,6 +154,7 @@ import java.time.format.DateTimeFormatter
                         TextButton(onClick={changeState(task.id,FrozenState.CARRY_OVER)},enabled=!busy && task.state!=FrozenState.CARRY_OVER) { Text("Carry to next Frozen shift",Modifier.fillMaxWidth()) }
                         if(task.state!=FrozenState.TODO) TextButton(onClick={changeState(task.id,FrozenState.TODO)},enabled=!busy) { Text(if(task.state==FrozenState.CARRY_OVER) "Remove from carryover" else "Return to do",Modifier.fillMaxWidth()) }
                     }
+                    if(dismissTask!=null && task.state!=FrozenState.COMPLETED && !task.carryoverArchived && !task.carryoverExcluded) TextButton(onClick={dismissTask(task.id)},enabled=!busy) { Text("Dismiss task",Modifier.fillMaxWidth()) }
                     if(task.plan.isNotBlank()) {
                         if(task.family.isBlank()) TextButton(onClick={productEditing=task},enabled=!busy) { Text("Edit product / SKU") }
                         TextButton(onClick={removing=task},enabled=!busy) { Text("Remove product") }
