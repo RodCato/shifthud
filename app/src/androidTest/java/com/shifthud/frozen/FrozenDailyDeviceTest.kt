@@ -84,6 +84,49 @@ class FrozenDailyDeviceTest {
         store.openDaily(sunday)
         assertEquals(1,store.tasks.first().count{it.state==FrozenState.COMPLETED})
     }
+    @Test fun futureNavigationAndWeekViewNeverPersistProjectedTasks()=runBlocking {
+        val today=LocalDate.of(2026,12,31)
+        val vm=FrozenTasksViewModel(store,automatic=true).also{models.put("daily",it)}
+        ui.setContent {ShiftHudTheme {Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {
+            FrozenDailyScreen(vm,{}, {},currentDate={today})
+        }}}
+        ui.waitUntil(10000) {runBlocking {today in store.dailyDates.first()}}
+        val before=store.tasks.first();val dates=store.dailyDates.first()
+        ui.onNodeWithContentDescription("Next day").performClick()
+        ui.onNodeWithText("Read-only preview · carryovers are projected").assertIsDisplayed()
+        ui.onNodeWithText("Add task").assertDoesNotExist()
+        assertEquals(before,store.tasks.first());assertEquals(dates,store.dailyDates.first())
+        ui.onNodeWithText("Week View").performClick()
+        ui.onNodeWithText("2026-12-26 – 2027-01-01 · Saturday–Friday").assertIsDisplayed()
+        assertEquals(before,store.tasks.first());assertEquals(dates,store.dailyDates.first())
+        capture("week-view")
+        show("Fri, Jan 1");ui.onNodeWithText("Fri, Jan 1").performClick()
+        ui.onNodeWithText("Read-only preview · carryovers are projected").assertIsDisplayed()
+        ui.onNodeWithText("Today").performClick()
+        ui.waitUntil(10000) {runBlocking {store.selectedWorkflow.first()==dailyWorkflowId(today)}}
+        ui.onNodeWithText("Read-only preview · carryovers are projected").assertDoesNotExist()
+        ui.onNodeWithContentDescription("Previous day").performClick()
+        ui.waitUntil(10000) {runBlocking {today.minusDays(1) in store.dailyDates.first()}}
+        ui.onNodeWithText("Today").performClick()
+        ui.waitUntil(10000) {runBlocking {store.selectedWorkflow.first()==dailyWorkflowId(today)}}
+        assertFalse(today.plusDays(1) in store.dailyDates.first())
+    }
+    @Test fun resolveFreightByAnotherAssociateDoesNotCheckItOff()=runBlocking {
+        val friday=LocalDate.of(2026,11,6)
+        val vm=FrozenTasksViewModel(store,automatic=true).also{models.put("daily",it)}
+        ui.setContent {ShiftHudTheme {Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {
+            FrozenDailyScreen(vm,{}, {},currentDate={friday})
+        }}}
+        ui.waitUntil(10000) {runBlocking {store.tasks.first().size==8}}
+        val title="Check for unworked Thursday KE freight"
+        show(title);ui.onNodeWithText(title).performClick()
+        show("Resolved by another associate")
+        ui.onNodeWithText("Resolved by another associate").performClick()
+        ui.waitUntil(10000) {runBlocking {store.tasks.first().first().resolvedByOtherAt!=null}}
+        assertEquals(FrozenState.TODO,store.tasks.first().first().state)
+        assertTrue(store.tasks.first().first().history.isEmpty())
+        assertEquals(7,dailyFrozenRows(store.tasks.first(),friday).size)
+    }
     @Test fun midnightChangesChecklistWithoutResettingCompletedSources()=runBlocking {
         val monday=LocalDate.of(2026,11,2)
         var date=monday

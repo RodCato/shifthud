@@ -24,6 +24,7 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
     val tasks=store.data.map { decode(it[key]) }
     suspend fun initialize() { store.guardedEdit { if(it[key]==null) it[key]=encode(mondayFrozenTemplate()) else decode(it[key]);decodeTrucks(it[trucksKey]) } }
     private val dailyDatesKey=stringSetPreferencesKey("daily_workflow_dates")
+    private val fridayDatesKey=stringSetPreferencesKey("friday_template_dates_v1")
     private val templateDatesKey=stringSetPreferencesKey("daily_template_dates_v1")
     private val freshStartKey=booleanPreferencesKey("carryovers_archived_before_2026_11_01")
     val dailyDates=store.data.map { values -> values[dailyDatesKey].orEmpty().map(LocalDate::parse).sortedDescending() }
@@ -39,7 +40,10 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
         // Older builds could mark a date visited with no responsibilities. Repair missing
         // stable IDs once; keep every existing task, edit, completion and source record.
         val registered=values[templateDatesKey].orEmpty()
-        val additions=if(date.toString() in registered) emptyList() else dailyFrozenTemplate(date)
+        val fridayDates=values[fridayDatesKey].orEmpty()
+        val repairFriday=date.dayOfWeek==DayOfWeek.FRIDAY && date.toString() !in fridayDates
+        if(repairFriday) values[fridayDatesKey]=fridayDates+date.toString()
+        val additions=if(date.toString() in registered && !repairFriday) emptyList() else dailyFrozenTemplate(date)
             .filter { candidate -> existing.none { it.id==candidate.id } }
             .map { if(it.date<FROZEN_CARRYOVER_BASELINE) it.copy(carryoverArchived=true) else it }
         values[templateDatesKey]=registered+date.toString()
@@ -63,6 +67,13 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
                 carryoverExcluded=state==FrozenState.TODO && row.task.state==FrozenState.CARRY_OVER && task.date<date,
                 history=if(task.state==state) task.history else task.history+FrozenEvent(state,clock.instant()),workflows=(task.workflows+dailyWorkflowId(date)).distinct())
         })
+    } }
+    suspend fun resolveDailyByOther(date:LocalDate,id:String) { store.guardedEdit { values ->
+        val existing=decode(values[key])
+        val row=dailyFrozenRows(existing,date).singleOrNull {it.task.id==id} ?: error("Task changed. Reopen the checklist.")
+        val ids=row.sources.filter {it.state!=FrozenState.COMPLETED}.map {it.id}.toSet()
+        val resolvedAt=clock.instant()
+        values[key]=encode(existing.map {if(it.id in ids) it.copy(resolvedByOtherAt=resolvedAt) else it})
     } }
     suspend fun dismissDaily(date:LocalDate,id:String) { store.guardedEdit { values ->
         val existing=decode(values[key])
@@ -208,7 +219,7 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
     }
     internal fun encode(tasks:List<FrozenTask>):String=JSONObject().put("version",1).put("tasks",JSONArray().apply {
         tasks.forEach { t -> put(JSONObject().put("id",t.id).put("date",t.date.toString()).put("title",t.title).put("description",t.description)
-            .put("carryoverArchived",t.carryoverArchived).put("carryoverExcluded",t.carryoverExcluded).put("family",t.family).put("category",t.category).put("chosen",JSONArray(t.chosen)).put("sourceNames",JSONArray(t.sourceNames)).put("sourceSkus",JSONArray(t.sourceSkus))
+            .put("resolvedByOtherAt",t.resolvedByOtherAt?.toString() ?: JSONObject.NULL).put("carryoverArchived",t.carryoverArchived).put("carryoverExcluded",t.carryoverExcluded).put("family",t.family).put("category",t.category).put("chosen",JSONArray(t.chosen)).put("sourceNames",JSONArray(t.sourceNames)).put("sourceSkus",JSONArray(t.sourceSkus))
             .put("eligible",JSONArray().apply { t.eligible.forEach { put(JSONObject().put("name",it.name).put("sku",it.sku).put("family",it.family).put("category",it.category).put("sourceNames",JSONArray(it.sourceNames)).put("sourceSkus",JSONArray(it.sourceSkus))) } })
             .put("workflows",JSONArray(t.workflows)).put("section",t.section).put("sku",t.sku).put("plan",t.plan).put("state",t.state.name).put("notes",t.notes).put("history",JSONArray().apply {
                 t.history.forEach { put(JSONObject().put("state",it.state.name).put("at",it.at.toString())) }
@@ -228,7 +239,7 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
                 t.optJSONArray("eligible")?.let { a->(0 until a.length()).map { j->val p=a.getJSONObject(j);EndcapProduct(p.getString("name"),p.optString("sku"),p.optString("family"),p.optString("category","Unassigned"),p.optJSONArray("sourceNames")?.let { n->(0 until n.length()).map { n.getString(it) } }.orEmpty(),p.optJSONArray("sourceSkus")?.let { n->(0 until n.length()).map { n.getString(it) } }.orEmpty()) } }.orEmpty(),
                 t.optJSONArray("chosen")?.let { a->(0 until a.length()).map { a.getString(it) } }.orEmpty(),
                 t.optJSONArray("sourceNames")?.let { a->(0 until a.length()).map { a.getString(it) } }.orEmpty(),
-                t.optJSONArray("sourceSkus")?.let { a->(0 until a.length()).map { a.getString(it) } }.orEmpty(),t.optBoolean("carryoverExcluded",false),t.optBoolean("carryoverArchived",false)).also { check(it.id.isNotBlank());validate(it.title,it.description,it.notes) }
+                t.optJSONArray("sourceSkus")?.let { a->(0 until a.length()).map { a.getString(it) } }.orEmpty(),t.optBoolean("carryoverExcluded",false),t.optBoolean("carryoverArchived",false),if(t.isNull("resolvedByOtherAt")) null else Instant.parse(t.getString("resolvedByOtherAt"))).also { check(it.id.isNotBlank());validate(it.title,it.description,it.notes) }
         }
         check(result.map { it.id }.distinct().size==result.size) { "Duplicate Frozen task IDs." }
         return result

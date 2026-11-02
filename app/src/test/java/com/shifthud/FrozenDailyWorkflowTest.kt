@@ -158,8 +158,8 @@ class FrozenDailyWorkflowTest {
         assertTrue(dailyFrozenRows(tasks(),monday.plusDays(1)).flatMap{it.sources}.none{it.id in completed})
         assertEquals(5,dailyFrozenRows(tasks(),monday.plusDays(1)).flatMap{it.sources}.count{it.date==sunday})
     }
-    @Test fun thursdayFridaySaturdayRemainUndefined() {
-        (3L..5L).forEach {assertTrue(dailyFrozenTemplate(monday.plusDays(it)).isEmpty())}
+    @Test fun thursdaySaturdayRemainUndefined() {
+        listOf(3L,5L).forEach {assertTrue(dailyFrozenTemplate(monday.plusDays(it)).isEmpty())}
     }
     private suspend fun seed(saved:List<FrozenTask>,visited:LocalDate?=null) {
         dataStore!!.edit { values ->
@@ -226,6 +226,54 @@ class FrozenDailyWorkflowTest {
         seed(tasks()+old);store.openDaily(monday)
         assertEquals(old,tasks().single{it.id==old.id})
         assertTrue(dailyFrozenRows(tasks(),monday).flatMap{it.sources}.none{it.id==old.id})
+    }
+    @Test fun fridayRepairsEarlierUndefinedDateWithoutChangingManualNotes()=runBlocking {
+        val friday=LocalDate.of(2026,11,6)
+        val manual=FrozenTask("manual-friday",friday,"Synthetic freight","Already verified",notes="Approximate quantity noted")
+        seed(listOf(manual),friday)
+        dataStore!!.edit {it[androidx.datastore.preferences.core.stringSetPreferencesKey("daily_template_dates_v1")]=setOf(friday.toString())}
+        store.openDaily(friday)
+        assertEquals(9,tasks().size)
+        assertEquals(manual.copy(workflows=listOf(dailyWorkflowId(friday))),tasks().first())
+        assertTrue(tasks().all{it.state==FrozenState.TODO})
+        val before=tasks();store.openDaily(friday);assertEquals(before,tasks())
+    }
+    @Test fun fridayFreightSurvivesSaturdayAndSundayWithoutCopies()=runBlocking {
+        val friday=LocalDate.of(2026,11,6);store.openDaily(friday)
+        store.add("Synthetic unfinished freight","Origin: prior vendor delivery","Remaining: approximately half a pallet; verified")
+        val original=tasks().last()
+        store.openDaily(friday.plusDays(1));store.openDaily(friday.plusDays(2));store.openDaily(friday.plusDays(2))
+        assertEquals(1,tasks().count{it.id==original.id})
+        val carried=dailyFrozenRows(tasks(),friday.plusDays(2)).single{it.task.id==original.id}
+        assertEquals(friday,carried.task.date);assertEquals(original.notes,carried.task.notes)
+        assertEquals(FrozenState.CARRY_OVER,carried.task.state)
+        assertTrue(tasks().none{it.state==FrozenState.COMPLETED})
+    }
+    @Test fun resolutionByAnotherAssociatePreservesNotesAndNeverRecordsPersonalCompletion()=runBlocking {
+        val friday=LocalDate.of(2026,11,6);store.openDaily(friday)
+        val original=tasks().first()
+        store.saveDetails(original.id,original.title,original.description,"Thursday KE; already verified; awaiting stocking")
+        val saved=tasks().first();store.openDaily(friday.plusDays(2))
+        store.resolveDailyByOther(friday.plusDays(2),original.id)
+        val resolved=tasks().single{it.id==original.id}
+        assertNotNull(resolved.resolvedByOtherAt)
+        assertEquals(saved.state,resolved.state);assertEquals(saved.history,resolved.history);assertEquals(saved.notes,resolved.notes)
+        assertFalse(dailyFrozenRows(tasks(),friday.plusDays(2)).any{row->row.sources.any{it.id==original.id}})
+        job.cancelAndJoin();job=SupervisorJob();store=create();store.openDaily(friday.plusDays(3))
+        assertEquals(resolved.resolvedByOtherAt,tasks().single{it.id==original.id}.resolvedByOtherAt)
+        assertFalse(dailyFrozenRows(tasks(),friday.plusDays(3)).any{row->row.sources.any{it.id==original.id}})
+        assertTrue(frozenWorkflowTasks(tasks(),dailyWorkflowId(friday)).any{it.id==original.id})
+    }
+    @Test fun repeatedFuturePlanningDoesNotPersistTasksOrChangeSelectedWorkflow()=runBlocking {
+        store.openDaily(monday)
+        val before=tasks();val dates=store.dailyDates.first();val selected=store.selectedWorkflow.first()
+        repeat(3) {frozenPlanningWeek(tasks(),emptyList(),monday.plusWeeks(3),monday)}
+        assertEquals(before,tasks());assertEquals(dates,store.dailyDates.first());assertEquals(selected,store.selectedWorkflow.first())
+        val friday=monday.plusDays(4)
+        val projected=frozenPlanningRows(tasks(),friday,monday)
+        store.openDaily(friday)
+        assertEquals(projected.map{it.task.id}.toSet(),dailyFrozenRows(tasks(),friday).map{it.task.id}.toSet())
+        assertEquals(8,tasks().count{it.date==friday})
     }
     @Test fun emptyUnknownDayIsSavedWithoutInventingProcedures()=runBlocking {
         val day=monday.plusDays(3);store.openDaily(day);store.openDaily(day)

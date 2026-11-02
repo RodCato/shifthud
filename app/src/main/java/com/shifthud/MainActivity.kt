@@ -115,7 +115,7 @@ class MainActivity : ComponentActivity() {
                                 @Suppress("UNCHECKED_CAST")
                                 override fun <T:ViewModel> create(modelClass:Class<T>):T = com.shifthud.frozen.FrozenTasksViewModel((application as ShiftHudApplication).frozenTasks,automatic=true) as T
                             })
-                            com.shifthud.frozen.FrozenDailyScreen(frozen,openCountRoute={nav.navigate("FrozenCountRoute")},openManual={nav.navigate("FrozenTasks")})
+                            com.shifthud.frozen.FrozenDailyScreen(frozen,openCountRoute={nav.navigate("FrozenCountRoute")},openManual={nav.navigate("FrozenTasks")},schedule=data.schedule,scheduleLoaded=data.loaded)
                         }
                         composable("FrozenTasks") {
                             val frozen: com.shifthud.frozen.FrozenTasksViewModel = viewModel(factory=object:ViewModelProvider.Factory {

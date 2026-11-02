@@ -40,7 +40,7 @@ import java.time.format.DateTimeFormatter
     back:()->Unit,changeState:(String,FrozenState)->Unit,save:(String?,String,String,String,()->Unit)->Unit,
     workflow:String="",controls:@Composable ()->Unit={},removeProduct:(String)->Unit={},
     editProduct:(String,String,String,()->Unit)->Unit={_,_,_,_->},truck:FrozenTruckWorkflow?=null,truckArrival:(Boolean)->Unit={},chooseVariety:(String,EndcapProduct,Boolean)->Unit={_,_,_->},
-    dismissTask:((String)->Unit)?=null,dailyDate:java.time.LocalDate?=null,sources:Map<String,List<FrozenTask>> = emptyMap(),
+    resolveByOther:((String)->Unit)?=null,dismissTask:((String)->Unit)?=null,showDailyDate:Boolean=true,dailyDate:java.time.LocalDate?=null,sources:Map<String,List<FrozenTask>> = emptyMap(),
     listState:androidx.compose.foundation.lazy.LazyListState=androidx.compose.foundation.lazy.rememberLazyListState()) {
     var carryOpen by rememberSaveable(workflow) { mutableStateOf(true) }
     var completedOpen by rememberSaveable(workflow) { mutableStateOf(false) }
@@ -63,7 +63,7 @@ import java.time.format.DateTimeFormatter
     LazyColumn(Modifier.fillMaxSize().padding(horizontal=20.dp),state=listState,verticalArrangement=Arrangement.spacedBy(8.dp),contentPadding=PaddingValues(vertical=12.dp)) {
         item {
             if(dailyDate!=null) {
-                Text(dailyDate.format(DateTimeFormatter.ofPattern("EEEE, MMMM d",locale)).uppercase(locale),Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleMedium)
+                if(showDailyDate) Text(dailyDate.format(DateTimeFormatter.ofPattern("EEEE, MMMM d",locale)).uppercase(locale),Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleMedium)
                 Text("Frozen Workflow",Modifier.fillMaxWidth(),style=MaterialTheme.typography.headlineMedium)
             } else {
             TextButton(onClick=back,modifier=Modifier.semantics { contentDescription="Back to Dashboard" }) { Text("Back",Modifier.fillMaxWidth()) }
@@ -114,14 +114,14 @@ import java.time.format.DateTimeFormatter
             if(open) items(rows,key={it.id}) { task ->
             val color=when(task.state) { FrozenState.COMPLETED->green;FrozenState.BLOCKED->red;FrozenState.IN_PROGRESS,FrozenState.CARRY_OVER->amber;else->MaterialTheme.colorScheme.onSurfaceVariant }
             ExpandableSection(task.title,task.state.label,leading={
-                Checkbox(checked=task.state==FrozenState.COMPLETED,enabled=!busy,
+                Checkbox(checked=task.state==FrozenState.COMPLETED,enabled=!busy && task.resolvedByOtherAt==null,
                     onCheckedChange={changeState(task.id,if(it) FrozenState.COMPLETED else FrozenState.TODO)},
                     modifier=Modifier.semantics { contentDescription=if(task.state==FrozenState.COMPLETED) "Reopen ${task.title}" else "Complete ${task.title}" })
             },titleContent={
                 Text(task.title,Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleMedium,
                     color=if(task.state==FrozenState.COMPLETED) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
             },subtitleContent={
-                Text(if(task.carryoverArchived) "Archived carryover · fresh start Nov 1" else if(task.carryoverExcluded) "Dismissed" else task.state.label,Modifier.fillMaxWidth(),color=color,style=MaterialTheme.typography.bodyMedium)
+                Text(if(task.resolvedByOtherAt!=null) "Resolved by another associate" else if(task.carryoverArchived) "Archived carryover · fresh start Nov 1" else if(task.carryoverExcluded) "Dismissed" else task.state.label,Modifier.fillMaxWidth(),color=color,style=MaterialTheme.typography.bodyMedium)
                 if(dailyDate!=null) {
                     val origins=sources[task.id].orEmpty()
                     if(origins.any { it.state==FrozenState.BLOCKED }) Text("Blocked",color=red,style=MaterialTheme.typography.bodySmall)
@@ -148,19 +148,21 @@ import java.time.format.DateTimeFormatter
                 if(task.notes.isNotBlank())Text(task.notes,Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)
                 Text(task.description.ifBlank { "No reference notes." },Modifier.fillMaxWidth(),color=blue,style=MaterialTheme.typography.bodyMedium)
                 FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    if(task.state!=FrozenState.COMPLETED) {
+                    if(task.state!=FrozenState.COMPLETED && task.resolvedByOtherAt==null) {
                         TextButton(onClick={changeState(task.id,FrozenState.IN_PROGRESS)},enabled=!busy && task.state!=FrozenState.IN_PROGRESS) { Text("Start task",Modifier.fillMaxWidth()) }
                         TextButton(onClick={changeState(task.id,FrozenState.BLOCKED)},enabled=!busy && task.state!=FrozenState.BLOCKED) { Text("Mark blocked",Modifier.fillMaxWidth()) }
                         TextButton(onClick={changeState(task.id,FrozenState.CARRY_OVER)},enabled=!busy && task.state!=FrozenState.CARRY_OVER) { Text("Carry to next Frozen shift",Modifier.fillMaxWidth()) }
                         if(task.state!=FrozenState.TODO) TextButton(onClick={changeState(task.id,FrozenState.TODO)},enabled=!busy) { Text(if(task.state==FrozenState.CARRY_OVER) "Remove from carryover" else "Return to do",Modifier.fillMaxWidth()) }
                     }
-                    if(dismissTask!=null && task.state!=FrozenState.COMPLETED && !task.carryoverArchived && !task.carryoverExcluded) TextButton(onClick={dismissTask(task.id)},enabled=!busy) { Text("Dismiss task",Modifier.fillMaxWidth()) }
+                    if(resolveByOther!=null && task.state!=FrozenState.COMPLETED && task.resolvedByOtherAt==null) TextButton(onClick={resolveByOther(task.id)},enabled=!busy) { Text("Resolved by another associate",Modifier.fillMaxWidth()) }
+                    if(dismissTask!=null && task.resolvedByOtherAt==null && task.state!=FrozenState.COMPLETED && !task.carryoverArchived && !task.carryoverExcluded) TextButton(onClick={dismissTask(task.id)},enabled=!busy) { Text("Dismiss task",Modifier.fillMaxWidth()) }
                     if(task.plan.isNotBlank()) {
                         if(task.family.isBlank()) TextButton(onClick={productEditing=task},enabled=!busy) { Text("Edit product / SKU") }
                         TextButton(onClick={removing=task},enabled=!busy) { Text("Remove product") }
                     }
                     TextButton(onClick={editing=task},enabled=!busy) { Text("Edit task / notes",Modifier.fillMaxWidth()) }
                 }
+                task.resolvedByOtherAt?.let { Text("Resolved by another associate · ${it.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("MMM d, uuuu h:mm a",locale))}",style=MaterialTheme.typography.bodySmall) }
                 if(task.history.isNotEmpty())ExpandableSection("Task history","${task.history.size} state changes",subtitleContent={Text("${task.history.size} state changes",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall)}) {
                     task.history.asReversed().forEach { event -> Text("${event.state.label} · ${event.at.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("MMM d, uuuu h:mm a",locale))}",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodySmall) }
                 }
