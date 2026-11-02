@@ -11,7 +11,7 @@ data class FrozenTask(val id: String, val date: LocalDate, val title: String, va
     val state: FrozenState = FrozenState.TODO, val notes: String = "", val history: List<FrozenEvent> = emptyList(),
     val workflows: List<String> = emptyList(), val section: String = "", val sku: String = "", val plan: String = "",
     val family:String="", val category:String="Unassigned", val eligible:List<EndcapProduct> = emptyList(),
-    val chosen:List<String> = emptyList(), val sourceNames:List<String> = emptyList(),val sourceSkus:List<String> = emptyList(),val carryoverExcluded:Boolean=false,val carryoverArchived:Boolean=false)
+    val chosen:List<String> = emptyList(), val sourceNames:List<String> = emptyList(),val sourceSkus:List<String> = emptyList(),val carryoverExcluded:Boolean=false,val carryoverArchived:Boolean=false,val resolvedByOtherAt:Instant?=null)
 
 val FROZEN_MONDAY: LocalDate = LocalDate.of(2026,10,19)
 const val FROZEN_TITLE = "Frozen — Monday Solo Shift"
