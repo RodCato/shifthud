@@ -141,7 +141,7 @@ internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFro
         }
 
         if(expanded) {
-            Column(GlanceModifier.fillMaxWidth().padding(top=8.dp).clickable(openApp(context,TASKS_DESTINATION))) {
+            Column(GlanceModifier.fillMaxWidth().padding(top=8.dp)) {
                 Text("TODAY'S FROZEN TASKS",style=TextStyle(color=muted,fontSize=11.sp,fontWeight=FontWeight.Bold),maxLines=2)
                 Text(frozen.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d",context.resources.configuration.locales[0])),style=TextStyle(color=muted,fontSize=11.sp),maxLines=1)
                 Text(frozen.summary,style=TextStyle(color=white,fontSize=14.sp,fontWeight=FontWeight.Bold),maxLines=2)
@@ -152,9 +152,10 @@ internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFro
                 frozen.tasks.take(visible).chunked(10).forEach { group ->
                 Column(GlanceModifier.fillMaxWidth()) {
                 group.forEach {task->
-                    Text(task.label,modifier=GlanceModifier.fillMaxWidth().padding(vertical=2.dp)
-                        .clickable(openApp(context,TASKS_DESTINATION))
-                        .semantics {contentDescription="${if(task.completed) "Completed" else "Unfinished"}: ${task.title}"},
+                    CheckBox(checked=task.completed,onCheckedChange=frozenTaskWidgetAction(frozen.date,task),
+                        text=task.title,modifier=GlanceModifier.fillMaxWidth().height(taskTouchHeight(context,size,task.title).dp)
+                            .clickable(frozenTaskWidgetAction(frozen.date,task))
+                            .semantics {contentDescription="${if(task.completed) "Reopen" else "Complete"}: ${task.title}"},
                         style=TextStyle(color=if(task.completed)muted else white,fontSize=12.sp),maxLines=Int.MAX_VALUE)
                 }
                 }
@@ -267,6 +268,16 @@ private fun checklistCapacity(context:Context,size:DpSize,data:WidgetState,froze
         (data.weekly?.let {8+text("WEEKLY · ${it.paid} / ${it.target}",16,2)+9+text(it.detail,12,2)} ?: 0f)
     val heading=8+text("TODAY'S FROZEN TASKS",11,2)+text(frozen.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d",context.resources.configuration.locales[0])),11,1)+text(frozen.summary,14,2)
     val available=size.height.value-24-header-paid-footer-details-heading-6-text(data.updated+" · ↻",12,1)-8
-    return visibleWidgetTaskCount(frozen.tasks.map {text(it.label,12)+4},available,
+    return visibleWidgetTaskCount(frozen.tasks.map {taskTouchHeight(context,size,it.title)},available,
         text("+${frozen.tasks.size} more tasks — Open Tasks",12,2))
+}
+
+private fun taskTouchHeight(context:Context,size:DpSize,title:String):Float {
+    val metrics=context.resources.displayMetrics
+    val paint=android.text.TextPaint().apply {
+        textSize=android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,12f,metrics)
+    }
+    val width=((size.width.value-24-48)*metrics.density).toInt().coerceAtLeast(1)
+    val layout=android.text.StaticLayout.Builder.obtain(title,0,title.length,paint,width).setIncludePad(true).build()
+    return maxOf(48f,layout.height/metrics.density+12)
 }

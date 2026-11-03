@@ -90,13 +90,31 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
     suspend fun setDailyState(date:LocalDate,id:String,state:FrozenState) { edit { values ->
         val existing=decode(values[key]);val row=dailyFrozenRows(existing,date).singleOrNull { it.task.id==id }
             ?: error("Task changed. Reopen the checklist.")
+        values[key]=encode(applyDailyState(existing,row,date,state))
+    } }
+    /** Compare and set inside the same DataStore transaction. Duplicate/stale deliveries
+     * never toggle newer state, including after a complete/reopen cycle or process restart. */
+    suspend fun setDailyCompletion(date:LocalDate,id:String,revision:String,completed:Boolean):Boolean {
+        var applied=false
+        edit { values ->
+            if(date!=LocalDate.now(clock.withZone(zone()))) return@edit
+            val existing=decode(values[key])
+            val row=dailyFrozenRows(existing,date).singleOrNull {it.task.id==id} ?: return@edit
+            if(row.actionRevision()!=revision || (row.task.state==FrozenState.COMPLETED)==completed) return@edit
+            values[key]=encode(applyDailyState(existing,row,date,if(completed)FrozenState.COMPLETED else FrozenState.TODO))
+            applied=true
+        }
+        return applied
+    }
+    private fun applyDailyState(existing:List<FrozenTask>,row:FrozenDailyRow,date:LocalDate,state:FrozenState):List<FrozenTask> {
         val ids=row.sources.filter { row.task.state==FrozenState.COMPLETED || it.state!=FrozenState.COMPLETED }.map { it.id }.toSet()
-        values[key]=encode(existing.map { task ->
+        return existing.map { task ->
             if(task.id !in ids) task else task.copy(state=state,
                 carryoverExcluded=state==FrozenState.TODO && row.task.state==FrozenState.CARRY_OVER && task.date<date,
                 history=if(task.state==state) task.history else task.history+FrozenEvent(state,clock.instant()),workflows=(task.workflows+dailyWorkflowId(date)).distinct())
-        })
-    } }
+        }
+    }
+
     suspend fun resolveDailyByOther(date:LocalDate,id:String) { edit { values ->
         val existing=decode(values[key])
         val row=dailyFrozenRows(existing,date).singleOrNull {it.task.id==id} ?: error("Task changed. Reopen the checklist.")

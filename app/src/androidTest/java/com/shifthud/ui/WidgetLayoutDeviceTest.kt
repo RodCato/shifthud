@@ -46,7 +46,7 @@ class WidgetLayoutDeviceTest {
             remote?.let { frame.updateAppWidget(it) }
         }) }
         fun texts(view:android.view.View):List<TextView> = if(view is android.view.ViewGroup) (0 until view.childCount).flatMap { texts(view.getChildAt(it)) } else listOfNotNull(view as? TextView)
-        val cases=listOf(ShiftHudWidget.COMPACT,ShiftHudWidget.NORMAL,ShiftHudWidget.EXPANDED,ShiftHudWidget.TALL,ShiftHudWidget.LARGE,DpSize(320.dp,800.dp)).map { it to 31 } + listOf(26,60,65).map { ShiftHudWidget.LARGE to it }
+        val cases=listOf(ShiftHudWidget.COMPACT,ShiftHudWidget.NORMAL,ShiftHudWidget.EXPANDED,ShiftHudWidget.TALL,ShiftHudWidget.LARGE,DpSize(320.dp,1100.dp)).map { it to 31 } + listOf(26,60,65).map { ShiftHudWidget.LARGE to it }
         for((size,minutes) in cases) {
             val sample=session.copy(lunchStart=now.minusSeconds(minutes*60L))
             state=WidgetStateFactory(ShiftEngine()).create(emptyList(),sample,360,now,ZoneId.systemDefault(),Locale.US)
@@ -83,15 +83,20 @@ class WidgetLayoutDeviceTest {
                     assertTrue("Float action directly visible",add.getGlobalVisibleRect(bounds))
                     assertEquals("Float action not clipped",add.height,bounds.height());assertTrue(add.hasOnClickListeners())
                 }
-                if(size.height>=800.dp && context.resources.configuration.fontScale<=1.3f) {
+                if(size.height>=1100.dp && context.resources.configuration.fontScale<=1.3f) {
                     val rows=all.filter {it.text.toString().contains("Persisted responsibility")}
                     assertEquals("All eleven tasks fit",11,rows.size)
-                    assertTrue(rows.take(4).all {it.text.startsWith("•")})
-                    assertTrue(rows.drop(4).all {it.text.startsWith("✓")})
+                    assertTrue(all.filterIsInstance<android.widget.CheckBox>().take(4).all {!it.isChecked})
+                    assertTrue(all.filterIsInstance<android.widget.CheckBox>().drop(4).all {it.isChecked})
                     assertNotEquals(rows.first().currentTextColor,rows.last().currentTextColor)
                     rows.forEach {row->
-                        assertTrue(generateSequence(row as android.view.View) {it.parent as? android.view.View}
-                            .takeWhile {it!==root}.any {it.hasOnClickListeners()})
+                        val target=generateSequence(row as android.view.View) {it.parent as? android.view.View}
+                            .takeWhile {it!==root}.firstOrNull {it.isClickable && it.height+1>=48*context.resources.displayMetrics.density}
+                        assertNotNull("Checkbox has a 48dp clickable row",target)
+                        val targetBounds=android.graphics.Rect()
+                        assertTrue(target!!.getGlobalVisibleRect(targetBounds))
+                        assertEquals(target.height,targetBounds.height())
+                        assertTrue("Native interactive checkbox",row is android.widget.CheckBox && row.isClickable)
                         val bounds=android.graphics.Rect()
                         assertTrue(row.getGlobalVisibleRect(bounds))
                         assertEquals("Task fully visible",row.height,bounds.height())

@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.*
 import androidx.datastore.preferences.core.*
 import androidx.test.platform.app.InstrumentationRegistry
 import com.shifthud.ui.theme.ShiftHudTheme
+import com.shifthud.widget.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.junit.*
@@ -153,5 +154,25 @@ class FrozenDailyDeviceTest {
         show("Run Frozen backstock")
         ui.onAllNodesWithText("Run Frozen backstock").assertCountEquals(1)
         ui.onNodeWithContentDescription("Complete Run Frozen backstock").assertHasClickAction();capture("large-carryover")
+    }
+    @Test fun widgetCompletionSynchronizesWithOpenTasksAndAppReopening()=runBlocking {
+        val today=LocalDate.now()
+        store.openDaily(today)
+        store.add("Widget synchronization fixture","Description","Preserved notes")
+        val task=store.tasks.first().single {it.title=="Widget synchronization fixture"}
+        val vm=FrozenTasksViewModel(store,automatic=true).also {models.put("daily",it)}
+        ui.setContent {ShiftHudTheme {Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {
+            FrozenDailyScreen(vm,{}, {},currentDate={today})
+        }}}
+        ui.waitUntil(10000) {ui.onAllNodes(hasScrollAction()).fetchSemanticsNodes().isNotEmpty()}
+        val rendered=widgetFrozenState(store.tasks.first(),FloatCounts(),today).tasks.single {it.id==task.id}
+        assertTrue(FrozenTaskActionExecutor(store).execute(FrozenTaskCommand(today,rendered.id,rendered.revision,true)))
+        ui.waitUntil(10000) {runBlocking {store.tasks.first().single {it.id==task.id}.state==FrozenState.COMPLETED}}
+        show("COMPLETED (1)")
+        ui.onNodeWithText("COMPLETED (1)").performClick()
+        show(task.title)
+        ui.onNodeWithContentDescription("Reopen ${task.title}").performClick()
+        ui.waitUntil(10000) {runBlocking {!widgetFrozenState(store.tasks.first(),FloatCounts(),today).tasks.single {it.id==task.id}.completed}}
+        assertEquals("Preserved notes",store.tasks.first().single {it.id==task.id}.notes)
     }
 }
