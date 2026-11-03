@@ -122,13 +122,13 @@ internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFro
             WidgetPaid(data.todayPaid,white,muted)
         }
         }
-        if(!expanded) header()
+        // Status shares the flexible region so fixed timekeeping controls cannot be clipped.
         // Secondary information may scroll in small/large-font hosts. All actions remain fixed.
         // Checklist rows are budgeted against actual host dimensions, including wrapped titles.
         androidx.glance.appwidget.lazy.LazyColumn(GlanceModifier.fillMaxWidth().defaultWeight()) {
         item {
         Column(GlanceModifier.fillMaxWidth()) {
-        if(expanded) Column(GlanceModifier.fillMaxWidth()) { header() }
+        Column(GlanceModifier.fillMaxWidth()) { header() }
         if(data.lunchMetric==null) Text(data.detailForSize(normal),style=TextStyle(color=muted,fontSize=12.sp),maxLines=if(data.completedLunch!=null)3 else 2)
         if(normal && !roomy) WidgetPaid(data.todayPaid,white,muted)
         if(normal) data.scheduledOut?.let { Text(it,style=TextStyle(color=muted,fontSize=12.sp),maxLines=2) }
@@ -171,18 +171,28 @@ internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFro
         }
         }
         }
-        if(pinnedCounter) WidgetFloatCounter(frozen,white,muted)
-        if(!expanded || data.actionLabel!="OPEN APP") Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Button(data.actionLabel, onClick = primary, modifier = GlanceModifier.defaultWeight().height(48.dp),
-                colors = ButtonDefaults.buttonColors(backgroundColor = ColorProvider(Color(0xFF9DD5AA)), contentColor = ColorProvider(Color(0xFF12331D))))
-            if(!expanded && showsQuickFind(size.width.value,size.height.value)) {
-                Spacer(GlanceModifier.width(6.dp))
-                Column(GlanceModifier.width(72.dp).height(if(fontScale>1.3f)60.dp else 48.dp).clickable(openApp(context, QUICK_FIND_DESTINATION)),
-                    verticalAlignment=Alignment.CenterVertically,horizontalAlignment=Alignment.CenterHorizontally) {
-                    Text("QUICK FIND",style=TextStyle(color=white,fontSize=(if(fontScale>1.3f)10 else 12).sp,fontWeight=FontWeight.Bold),maxLines=2)
-                }
-            }
+        val actionHeight=if(data.actionLabel=="CLOCK IN NEW SESSION")maxOf(64f,(if(normal)40 else 48)*fontScale) else maxOf(48f,32*fontScale)
+        @Composable fun actionButton(label:String,action:Action,modifier:GlanceModifier) {
+            Button(label,onClick=action,modifier=modifier.height(actionHeight.dp),
+                style=TextStyle(fontSize=(if(fontScale>1.3f)10 else 12).sp),
+                colors=ButtonDefaults.buttonColors(backgroundColor=ColorProvider(Color(0xFF9DD5AA)),contentColor=ColorProvider(Color(0xFF12331D))))
         }
+        if(normal) Row(GlanceModifier.fillMaxWidth()) {
+            actionButton(data.actionLabel,primary,GlanceModifier.defaultWeight())
+            data.clockOutCommand?.let {
+                Spacer(GlanceModifier.width(6.dp))
+                actionButton("CLOCK OUT",widgetAction(it),GlanceModifier.defaultWeight())
+            }
+
+        } else Column(GlanceModifier.fillMaxWidth()) {
+            actionButton(data.actionLabel,primary,GlanceModifier.fillMaxWidth())
+            data.clockOutCommand?.let {actionButton("CLOCK OUT",widgetAction(it),GlanceModifier.fillMaxWidth())}
+        }
+        if(normal && !expanded) Column(GlanceModifier.fillMaxWidth().height(if(fontScale>1.3f)60.dp else 48.dp).clickable(openApp(context,QUICK_FIND_DESTINATION)),
+            verticalAlignment=Alignment.CenterVertically,horizontalAlignment=Alignment.CenterHorizontally) {
+            Text("QUICK FIND",style=TextStyle(color=white,fontSize=10.sp),maxLines=2)
+        }
+        if(pinnedCounter) WidgetFloatCounter(frozen,white,muted)
         if(expanded) Row(GlanceModifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
             listOf("OPEN APP" to "Dashboard","TASKS" to TASKS_DESTINATION,"QUICK FIND" to QUICK_FIND_DESTINATION).forEach {(label,destination)->
                 Column(GlanceModifier.defaultWeight().height(if(fontScale>1.3f)60.dp else 48.dp).clickable(openApp(context,destination)),
@@ -217,16 +227,17 @@ internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFro
 
 private val OperationKey = ActionParameters.Key<String>("operation")
 private val SessionKey = ActionParameters.Key<Long>("session")
+private val ExpectedStateKey = ActionParameters.Key<String>("expected-state")
 private val DateKey = ActionParameters.Key<Long>("date")
 private fun widgetAction(command: WidgetCommand): Action = actionRunCallback<ShiftWidgetAction>(
-    actionParametersOf(OperationKey to command.operation.name, SessionKey to command.sessionId, DateKey to command.date.toEpochDay())
+    actionParametersOf(OperationKey to command.operation.name, SessionKey to command.sessionId, DateKey to command.date.toEpochDay(), ExpectedStateKey to (command.expectedState?.name ?: ""))
 )
 
 class ShiftWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         val app = context.applicationContext as ShiftHudApplication
         val command = runCatching {
-            WidgetCommand(WidgetOperation.valueOf(requireNotNull(parameters[OperationKey])), requireNotNull(parameters[SessionKey]), LocalDate.ofEpochDay(requireNotNull(parameters[DateKey])))
+            WidgetCommand(WidgetOperation.valueOf(requireNotNull(parameters[OperationKey])), requireNotNull(parameters[SessionKey]), LocalDate.ofEpochDay(requireNotNull(parameters[DateKey])),parameters[ExpectedStateKey]?.takeIf {it.isNotEmpty()}?.let {com.shifthud.domain.model.ShiftState.valueOf(it)})
         }.getOrNull()
         if (command == null) { app.widgetRefresh.refresh(); return }
         WidgetActionExecutor(app.repository, app.engine, { app.widgetRefresh.refresh() }).execute(command)
@@ -262,7 +273,7 @@ private fun checklistCapacity(context:Context,size:DpSize,data:WidgetState,froze
     val paid=6+text("TODAY’S PAID",12,1)+text(data.todayPaid ?: "—",24,1)
     val footer=(if(scale>1.3f)60 else 48)+
         maxOf(48f,text("FLOATS TODAY",11,2)+text(frozen.floatCount?.toString() ?: "—",24,1))+12+
-        (if(data.actionLabel!="OPEN APP")48 else 0)
+        (if(data.actionLabel=="CLOCK IN NEW SESSION")maxOf(64f,40*scale) else maxOf(48f,32*scale))
     val details=(if(lunch==null)text(data.detailForSize(true),12,if(data.completedLunch!=null)3 else 2) else 0f)+
         text(data.scheduledOut,12,2)+text(data.extra,14,2)+
         (data.weekly?.let {8+text("WEEKLY · ${it.paid} / ${it.target}",16,2)+9+text(it.detail,12,2)} ?: 0f)
