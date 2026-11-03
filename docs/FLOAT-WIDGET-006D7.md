@@ -1,0 +1,47 @@
+# MVP-006D.7 — Daily float counter and Frozen widget
+
+Base: `codex/mvp-006d6-weekly-task-planning` at `2f6dfdba39f245474fa041055729565476decfd4` (PR #39). Existing Frozen task storage, Glance responsive sizes, shift actions, paid-time/weekly metrics and refresh architecture are reused.
+
+## One persisted counter
+
+`FrozenTaskStore` stores a `daily_float_counts_v1` date-to-integer map in its existing Preferences DataStore. The app and widget use this same store; there is no widget copy, WorkSession association, timer, inferred float count or productivity score. Each +/-1 operation atomically updates the count and its command receipt. Counts cannot go negative. The date is calculated at transaction time from the current device zone, so a stale yesterday widget counts today's tap against today. Reads for a new date return zero without deleting historical totals.
+
+Tasks presents +/-1 on today's checklist. Past dates show their saved count read-only. Saturday–Friday week and calendar-month totals derive from the saved daily map. No chart or payroll estimate is involved. Rapid app taps bypass the task-editor busy gate and commit even if the view model is subsequently cleared.
+
+The last 1,024 command IDs are retained for retry deduplication, including across process restart. Glance does not expose a stable unique ID for an individual tap delivery. A token attached to a rendered button would also reject legitimate rapid successive taps, so each callback invocation gets a new command ID. Replays of a known command ID are deduplicated; separately delivered Android callback invocations cannot reliably be distinguished from distinct user taps. Launcher-level delivery/throttling remains outside the app's guarantee.
+
+## Widget content and actions
+
+Expanded widgets replace Favorites/Aisle Guide rendering and subscriptions with today's persisted Frozen summary: date, merged completion count and up to three pending titles (fewer on shorter hosts). Archived, dismissed and associate-resolved sources are excluded using the existing daily-row derivation. Summary taps open Tasks. All-complete and no-recurring-work states have explicit messages.
+
+Widget initialization uses the existing idempotent daily initializer without changing the app's selected workflow or triggering another redraw. Repeated refreshes do not duplicate tasks or mark anything completed. Future previews remain read-only.
+
+The upper shift/lunch area and weekly metrics retain their existing calculation paths. Larger widgets pin the float controls above the existing shift action and the OPEN APP / TASKS / QUICK FIND footer. Shorter expanded widgets keep floats in the scrollable area to preserve shift controls. Compact/normal variants retain their shift-focused controls. Favorites and Aisle Guide remain available in Quick Find; their application models, CRUD and search behavior are unchanged.
+
+Float callbacks execute only the counter command. A successful Frozen-store mutation requests `WidgetRefresh.redrawHistorical()`, the existing redraw-only path. This does not reconcile lunch, start a service or refresh notifications. Glance observes task/count flows during its composition session, and updateAll refreshes installed instances. Duplicate idempotent task initialization avoids redundant redraws.
+
+Date/time-zone/boot/package broadcasts request a redraw only. Existing active refresh and system widget update scheduling remain in place. Android may defer background widget redraws while asleep or idle; counter writes always use the current local date, even before the next redraw. No new alarms, foreground service or notification channel is introduced.
+
+Navigation uses explicit MainActivity destinations. Tasks widget entry replaces an already-open future preview and opens today's checklist. Quick Find retains its direct-tab focus behavior; Open App goes to Dashboard.
+
+## Data and verification
+
+No Room schema change or migration. Shift/lunch records, payroll, schedules, task history/templates, the November 1 archival baseline, Endcap OCR, Count Route, Favorites and Aisle Guide are preserved. Backup implementation is unchanged. No app-data clearing, backup restoration testing, signed release, physical-device deployment or PR merge is performed.
+
+Executed checks:
+- Debug build and Android-test APK passed.
+- 1,033 unit tests passed in each debug/release variant (backup round-trip/restoration tests excluded).
+- Lint: zero errors, 17 existing warnings and one hint.
+- 13 existing task/workflow emulator tests passed.
+- Two float/Glance emulator tests passed after correcting test-harness issues (a non-Unit test return and an assertion that initially checked only the immediate clickable parent).
+- The shared counter test verifies three widget-executor increments, rapid app increments and a correction against the same store.
+- Real RemoteViews cover compact, normal, expanded, tall and large sizes plus lunch-threshold states. Shift controls, pinned float targets and footer links remain visible; Favorites/Aisle Guide text is absent.
+- Synthetic expanded/compact widget and float-control screenshots were inspected. No real payroll records or screenshots are added to Git.
+
+Physical acceptance:
+1. Install the debug APK in place; do not clear data. Resize a widget to the large expanded layout.
+2. Tap +1 FLOAT three times on the launcher, then open Tasks and confirm the same count. Increment in Tasks and verify the widget updates; correct with -1 and confirm the zero floor.
+3. Complete/dismiss a task and verify the summary changes without duplicate carryovers.
+4. Browse a future date in Tasks, then tap the widget's TASKS shortcut; it must return to today. Verify OPEN APP and QUICK FIND destinations.
+5. Check Favorites/Aisle Guide inside Quick Find, and existing start/end lunch controls.
+6. Verify restart/reboot and midnight/time-zone rollover on the physical device; previous totals must remain in history. Check launcher-specific tap delivery, large fonts, TalkBack and shorter widget scrolling.

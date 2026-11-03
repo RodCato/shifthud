@@ -19,6 +19,7 @@ import androidx.work.WorkManager
 import com.shifthud.ShiftHudApplication
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.catch
 import java.time.*
 
 class ShiftHudWidget : GlanceAppWidget() {
@@ -41,8 +42,12 @@ class ShiftHudWidget : GlanceAppWidget() {
         val initialNow=Instant.now()
         val initialState = state(initial.schedule, initial.session, threshold, initialNow)
             .withMetrics(initialSessions,initial.schedule,initialPlanning,initialWeekly,initialNow,ZoneId.systemDefault())
-        val initialItems = app.quickFind.items.first()
-        val initialGuide = app.quickFind.guide.first()
+        val initialDate=initialNow.atZone(ZoneId.systemDefault()).toLocalDate()
+        val initialFrozen=try {
+            app.frozenTasks.openDaily(initialDate,select=false,notify=false)
+            widgetFrozenState(app.frozenTasks.tasks.first(),app.frozenTasks.floats.first(),initialDate)
+        } catch(e:kotlinx.coroutines.CancellationException) {throw e}
+        catch(_:Exception) {WidgetFrozenState(initialDate,error="Tasks unavailable · open Tasks") }
         provideContent {
             // Observe during Glance's finite composition session: updateAll alone does not restart it.
             val updates = remember {
@@ -55,11 +60,20 @@ class ShiftHudWidget : GlanceAppWidget() {
                 }
             }
             val data by updates.collectAsState(initialState)
-            val items by app.quickFind.items.collectAsState(initialItems)
-            val guide by app.quickFind.guide.collectAsState(initialGuide)
+            val frozenUpdates=remember {
+                combine(app.frozenTasks.tasks,app.frozenTasks.floats,app.widgetRefresh.now) {tasks,counts,now->
+                    widgetFrozenState(tasks,counts,now.atZone(ZoneId.systemDefault()).toLocalDate())
+                }.catch {emit(WidgetFrozenState(LocalDate.now(),error="Tasks unavailable · open Tasks"))}
+            }
+            val frozen by frozenUpdates.collectAsState(initialFrozen)
+            LaunchedEffect(frozen.date) {
+                try {app.frozenTasks.openDaily(frozen.date,select=false,notify=false)}
+                catch(e:kotlinx.coroutines.CancellationException) {throw e}
+                catch(_:Exception) { /* Keep the shift area available; next redraw retries. */ }
+            }
             val restoring by app.backups.busy.collectAsState()
             if(restoring)Text("ShiftHUD · Restoring data",style=TextStyle(color=ColorProvider(Color.White)))
-            else WidgetContent(data, context, items, guide)
+            else WidgetContent(data, context, frozen)
         }
     }
     companion object {
@@ -77,16 +91,15 @@ private data class WidgetSource(val schedule:List<com.shifthud.domain.model.Sche
 private fun openApp(context: Context, destination: String): Action = actionStartActivity(widgetDestinationIntent(context, destination))
 
 @Composable
-internal fun WidgetContent(data: WidgetState, context: Context, items: List<com.shifthud.domain.model.QuickFindItem>, guide: List<com.shifthud.domain.model.AisleGuideEntry>) {
+internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFrozenState) {
     val size = LocalSize.current
     val normal = size.width >= 280.dp && size.height >= 240.dp
     val expanded = size.width >= 320.dp && size.height >= 300.dp
-    val references = widgetReferences(items, guide, size.width.value, size.height.value, data.completedLunch != null)
-    val hasReferences = references.favorites.isNotEmpty() || references.guide.isNotEmpty()
     val white = ColorProvider(Color(0xFFF1F5EF))
     val muted = ColorProvider(Color(0xFFBACBBE))
     val primary = data.command?.let { widgetAction(it) } ?: openApp(context, data.destination)
     val fontScale=context.resources.configuration.fontScale
+    val pinnedCounter=expanded && size.height>=480.dp && fontScale<=1.3f
     val roomy=normal && (fontScale<=1.3f || size.height>=600.dp)
     Column(GlanceModifier.fillMaxSize().background(Color(0xFF15221A)).padding(12.dp).appWidgetBackground()) {
         val lunch=data.lunchMetric
@@ -108,14 +121,14 @@ internal fun WidgetContent(data: WidgetState, context: Context, items: List<com.
             WidgetPaid(data.todayPaid,white,muted)
         }
         // Secondary information may scroll in small/large-font hosts. Primary timer and action
-        // stay outside the collection, so no action depends on scrolling through references.
+        // stay outside the collection. Larger hosts also keep the float controls directly visible.
         androidx.glance.appwidget.lazy.LazyColumn(GlanceModifier.fillMaxWidth().defaultWeight()) {
         item {
         Column(GlanceModifier.fillMaxWidth()) {
         if(data.lunchMetric==null) Text(data.detailForSize(normal),style=TextStyle(color=muted,fontSize=12.sp),maxLines=if(data.completedLunch!=null)3 else 2)
         if(normal && !roomy) WidgetPaid(data.todayPaid,white,muted)
         if(normal) data.scheduledOut?.let { Text(it,style=TextStyle(color=muted,fontSize=12.sp),maxLines=2) }
-        if(expanded && !hasReferences) data.extra?.let { Text(it,style=TextStyle(color=muted,fontSize=14.sp),maxLines=2) }
+        if(expanded) data.extra?.let { Text(it,style=TextStyle(color=muted,fontSize=14.sp),maxLines=2) }
         if(expanded) data.weekly?.let { weekly ->
             val color=ColorProvider(Color(weekly.tone.argb))
             Text("WEEKLY · ${weekly.paid} / ${weekly.target}",modifier=GlanceModifier.padding(top=8.dp),style=TextStyle(color=white,fontSize=16.sp,fontWeight=FontWeight.Bold),maxLines=2)
@@ -123,47 +136,54 @@ internal fun WidgetContent(data: WidgetState, context: Context, items: List<com.
             Text(weekly.detail,style=TextStyle(color=color,fontSize=12.sp),maxLines=2)
         }
 
-        if (hasReferences) {
-            Column(GlanceModifier.fillMaxWidth().padding(top = 8.dp).clickable(openApp(context, QUICK_FIND_DESTINATION))) {
-                if (references.favorites.isNotEmpty()) { Column {
-                    Text("★ FAVORITES" + if(references.moreFavorites>0) " · +${references.moreFavorites} more" else "", style=TextStyle(color=muted,fontSize=11.sp,fontWeight=FontWeight.Bold),maxLines=1)
-                    references.favorites.forEach { Text(it,style=TextStyle(color=white,fontSize=12.sp),maxLines=1) }
-                } }
-                if (references.guide.isNotEmpty()) { Column {
-                    Text("AISLE GUIDE" + if(references.moreGuide>0) " · +${references.moreGuide} more" else "",modifier=GlanceModifier.padding(top=if (references.favorites.isNotEmpty()) 6.dp else 0.dp),style=TextStyle(color=muted,fontSize=11.sp,fontWeight=FontWeight.Bold),maxLines=1)
-                    references.guide.forEachIndexed { index, entry -> Column {
-                        if (index > 0) {
-                            Box(GlanceModifier.fillMaxWidth().height(1.dp).background(Color(0xFF34473A))) {}
-                        }
-                        Row(GlanceModifier.fillMaxWidth().padding(vertical = 3.dp)) {
-                            Text(entry.location,
-                                modifier = GlanceModifier.width(if (entry.location.toBigIntegerOrNull() != null) 32.dp else 72.dp).padding(end = 8.dp),
-                                style = TextStyle(color = white, fontSize = 13.sp, fontWeight = FontWeight.Bold), maxLines = 2)
-                            Text(entry.categories, modifier = GlanceModifier.defaultWeight(),
-                                style = TextStyle(color = muted, fontSize = 12.sp), maxLines = 2)
-                        }
-                    } }
-                } }
+        if(expanded) {
+            Column(GlanceModifier.fillMaxWidth().padding(top=8.dp).clickable(openApp(context,TASKS_DESTINATION))) {
+                Text("TODAY'S FROZEN TASKS",style=TextStyle(color=muted,fontSize=11.sp,fontWeight=FontWeight.Bold),maxLines=2)
+                Text(frozen.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d",context.resources.configuration.locales[0])),style=TextStyle(color=muted,fontSize=11.sp),maxLines=1)
+                Text(frozen.summary,style=TextStyle(color=white,fontSize=14.sp,fontWeight=FontWeight.Bold),maxLines=2)
+                frozen.unfinished.take(if(size.height>=480.dp)3 else if(size.height>=360.dp)2 else 1).forEach {title->
+                    Text("• $title",modifier=GlanceModifier.semantics {contentDescription=title},style=TextStyle(color=white,fontSize=12.sp),maxLines=if(size.height>=600.dp)2 else 1)
+                }
             }
+            if(!pinnedCounter) WidgetFloatCounter(frozen,white,muted)
         }
         Text(data.updated+" · ↻",modifier=GlanceModifier.fillMaxWidth().padding(top=6.dp).clickable(widgetAction(WidgetCommand(WidgetOperation.REFRESH,0,LocalDate.now()))),style=TextStyle(color=muted,fontSize=12.sp),maxLines=1)
         }
         }
         }
-        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        if(pinnedCounter) WidgetFloatCounter(frozen,white,muted)
+        if(!expanded || data.actionLabel!="OPEN APP") Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Button(data.actionLabel, onClick = primary, modifier = GlanceModifier.defaultWeight().height(48.dp),
                 colors = ButtonDefaults.buttonColors(backgroundColor = ColorProvider(Color(0xFF9DD5AA)), contentColor = ColorProvider(Color(0xFF12331D))))
-            if (showsQuickFind(size.width.value, size.height.value)) {
+            if(!expanded && showsQuickFind(size.width.value,size.height.value)) {
                 Spacer(GlanceModifier.width(6.dp))
                 Column(GlanceModifier.width(72.dp).height(if(fontScale>1.3f)60.dp else 48.dp).clickable(openApp(context, QUICK_FIND_DESTINATION)),
-                    verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("QUICK FIND", style = TextStyle(color = white, fontSize = (if(fontScale>1.3f)10 else 12).sp, fontWeight = FontWeight.Bold), maxLines = 2)
+                    verticalAlignment=Alignment.CenterVertically,horizontalAlignment=Alignment.CenterHorizontally) {
+                    Text("QUICK FIND",style=TextStyle(color=white,fontSize=(if(fontScale>1.3f)10 else 12).sp,fontWeight=FontWeight.Bold),maxLines=2)
                 }
             }
         }
-        if (size.height>=480.dp && data.status == WidgetStatus.WORKING) {
-            Text("Open app to clock out ›", modifier = GlanceModifier.fillMaxWidth().padding(top = 8.dp).clickable(openApp(context, "Dashboard")),
-                style = TextStyle(color = muted, fontSize = 14.sp), maxLines = 1)
+        if(expanded) Row(GlanceModifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+            listOf("OPEN APP" to "Dashboard","TASKS" to TASKS_DESTINATION,"QUICK FIND" to QUICK_FIND_DESTINATION).forEach {(label,destination)->
+                Column(GlanceModifier.defaultWeight().height(if(fontScale>1.3f)60.dp else 48.dp).clickable(openApp(context,destination)),
+                    verticalAlignment=Alignment.CenterVertically,horizontalAlignment=Alignment.CenterHorizontally) {
+                    Text(label,style=TextStyle(color=white,fontSize=(if(fontScale>1.3f)10 else 11).sp,fontWeight=FontWeight.Bold),maxLines=2)
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun WidgetFloatCounter(frozen:WidgetFrozenState,white:ColorProvider,muted:ColorProvider) {
+    Row(GlanceModifier.fillMaxWidth().padding(vertical=6.dp),verticalAlignment=Alignment.CenterVertically) {
+        Column(GlanceModifier.defaultWeight()) {
+            Text("FLOATS TODAY",style=TextStyle(color=muted,fontSize=11.sp,fontWeight=FontWeight.Bold),maxLines=2)
+            Text(frozen.floatCount?.toString() ?: "—",style=TextStyle(color=white,fontSize=24.sp,fontWeight=FontWeight.Bold),maxLines=1)
+        }
+        if(frozen.floatCount!=null) {
+            Button("−1",onClick=floatWidgetAction(-1),modifier=GlanceModifier.width(52.dp).height(48.dp))
+            Spacer(GlanceModifier.width(6.dp))
+            Button("+1 FLOAT",onClick=floatWidgetAction(1),modifier=GlanceModifier.width(120.dp).height(48.dp))
         }
     }
 }

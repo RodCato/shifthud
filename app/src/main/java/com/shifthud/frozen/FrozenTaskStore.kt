@@ -14,22 +14,51 @@ import java.util.UUID
 private val Context.frozenTaskStore by preferencesDataStore(name="frozen_tasks")
 
 /** Separate, atomic preferences; malformed data is surfaced, never reset to a template. */
-class FrozenTaskStore(private val store: DataStore<Preferences>, private val clock: Clock = Clock.systemUTC()) {
-    constructor(context: Context): this(context.applicationContext.frozenTaskStore)
+class FrozenTaskStore(private val store: DataStore<Preferences>, private val clock: Clock = Clock.systemUTC(),
+    private val zone:()->ZoneId = {ZoneId.systemDefault()},private val onChanged:suspend ()->Unit = {}) {
+    constructor(context: Context,onChanged:suspend ()->Unit = {}): this(context.applicationContext.frozenTaskStore,onChanged=onChanged)
+    private val floatKey=stringPreferencesKey("daily_float_counts_v1")
+    private val floatRequestsKey=stringPreferencesKey("float_requests_v1")
+    val floats=store.data.map {decodeFloatCounts(it[floatKey])}
+    /** Each accepted invocation has its own ID. Retrying that ID cannot apply it twice. */
+    suspend fun adjustFloat(delta:Int,requestId:String=UUID.randomUUID().toString()) {
+        require(delta==1 || delta == -1);require(requestId.isNotBlank() && requestId.length<=128)
+        edit { values ->
+            val requests=values[floatRequestsKey]?.let {raw->JSONArray(raw).let {a->(0 until a.length()).map {a.getString(it)}}}.orEmpty()
+            if(requestId !in requests) {
+                val date=LocalDate.now(clock.withZone(zone()))
+                val counts=decodeFloatCounts(values[floatKey])
+                val value=if(delta>0)Math.addExact(counts[date],1L) else (counts[date]-1).coerceAtLeast(0)
+                values[floatKey]=encodeFloatCounts(FloatCounts(counts.days+(date to value)))
+                values[floatRequestsKey]=JSONArray((requests+requestId).takeLast(1024)).toString()
+            }
+        }
+    }
+    private suspend fun edit(notify:Boolean=true,block:suspend (MutablePreferences)->Unit) {
+        var changed=false
+        store.guardedEdit { values ->
+            val before=values.toPreferences();block(values);changed=before!=values.toPreferences()
+        }
+        if(changed && notify) {
+            try {onChanged()}
+            catch(e:kotlinx.coroutines.CancellationException) {throw e}
+            catch(e:Exception) {android.util.Log.w("ShiftHUDFrozen","Widget redraw deferred",e)}
+        }
+    }
     private val key=stringPreferencesKey("tasks_v1")
     private val selectedKey=stringPreferencesKey("selected_workflow")
     private val trucksKey=stringPreferencesKey("truck_workflows_v1")
     val truckWorkflows=store.data.map { decodeTrucks(it[trucksKey]) }
     val selectedWorkflow=store.data.map { it[selectedKey].orEmpty() }
     val tasks=store.data.map { decode(it[key]) }
-    suspend fun initialize() { store.guardedEdit { if(it[key]==null) it[key]=encode(mondayFrozenTemplate()) else decode(it[key]);decodeTrucks(it[trucksKey]) } }
+    suspend fun initialize() { edit { if(it[key]==null) it[key]=encode(mondayFrozenTemplate()) else decode(it[key]);decodeTrucks(it[trucksKey]) } }
     private val dailyDatesKey=stringSetPreferencesKey("daily_workflow_dates")
     private val fridayDatesKey=stringSetPreferencesKey("friday_template_dates_v1")
     private val templateDatesKey=stringSetPreferencesKey("daily_template_dates_v1")
     private val freshStartKey=booleanPreferencesKey("carryovers_archived_before_2026_11_01")
     val dailyDates=store.data.map { values -> values[dailyDatesKey].orEmpty().map(LocalDate::parse).sortedDescending() }
     /** Initializes only missing templates. Existing tasks, notes, punches and assignment state are untouched. */
-    suspend fun openDaily(date:LocalDate) { store.guardedEdit { values ->
+    suspend fun openDaily(date:LocalDate,select:Boolean=true,notify:Boolean=true) { edit(notify) { values ->
         val original=decode(values[key]);val workflow=dailyWorkflowId(date)
         val existing=if(values[freshStartKey]==true) original else original.map { task ->
             if(task.date<FROZEN_CARRYOVER_BASELINE && task.state!=FrozenState.COMPLETED)
@@ -56,9 +85,9 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
             val trucks=decodeTrucks(values[trucksKey])
             if(trucks.none { it.date==date }) values[trucksKey]=encodeTrucks(trucks+FrozenTruckWorkflow(date,linked.filter { workflow in it.workflows }.map { it.id }))
         }
-        values[selectedKey]=workflow
+        if(select) values[selectedKey]=workflow
     } }
-    suspend fun setDailyState(date:LocalDate,id:String,state:FrozenState) { store.guardedEdit { values ->
+    suspend fun setDailyState(date:LocalDate,id:String,state:FrozenState) { edit { values ->
         val existing=decode(values[key]);val row=dailyFrozenRows(existing,date).singleOrNull { it.task.id==id }
             ?: error("Task changed. Reopen the checklist.")
         val ids=row.sources.filter { row.task.state==FrozenState.COMPLETED || it.state!=FrozenState.COMPLETED }.map { it.id }.toSet()
@@ -68,14 +97,14 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
                 history=if(task.state==state) task.history else task.history+FrozenEvent(state,clock.instant()),workflows=(task.workflows+dailyWorkflowId(date)).distinct())
         })
     } }
-    suspend fun resolveDailyByOther(date:LocalDate,id:String) { store.guardedEdit { values ->
+    suspend fun resolveDailyByOther(date:LocalDate,id:String) { edit { values ->
         val existing=decode(values[key])
         val row=dailyFrozenRows(existing,date).singleOrNull {it.task.id==id} ?: error("Task changed. Reopen the checklist.")
         val ids=row.sources.filter {it.state!=FrozenState.COMPLETED}.map {it.id}.toSet()
         val resolvedAt=clock.instant()
         values[key]=encode(existing.map {if(it.id in ids) it.copy(resolvedByOtherAt=resolvedAt) else it})
     } }
-    suspend fun dismissDaily(date:LocalDate,id:String) { store.guardedEdit { values ->
+    suspend fun dismissDaily(date:LocalDate,id:String) { edit { values ->
         val existing=decode(values[key])
         val row=dailyFrozenRows(existing,date).singleOrNull { it.task.id==id } ?: error("Task changed. Reopen the checklist.")
         val ids=row.sources.filter {it.state!=FrozenState.COMPLETED}.map {it.id}.toSet()
@@ -90,13 +119,13 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
     }
     suspend fun add(title: String, description: String, notes: String) {
         validate(title,description,notes)
-        store.guardedEdit { values ->
+        edit { values ->
             val existing=decode(values[key]); check(values[key]!=null) { "Checklist is not loaded." }
             values[key]=encode(existing+FrozenTask(UUID.randomUUID().toString(),values[selectedKey]?.takeIf { it.isNotBlank() }?.let(::frozenWorkflowDate) ?: FROZEN_MONDAY,title.trim(),description.trim(),notes=notes.trim(),workflows=listOfNotNull(values[selectedKey]?.takeIf { it.isNotBlank() }),section=if(values[selectedKey].orEmpty().startsWith(DAILY_PREFIX)) "TODAY'S RESPONSIBILITIES" else if(isWednesdayWorkflow(values[selectedKey].orEmpty())) "BEFORE TRUCK" else "MORNING TRANSITION"))
         }
     }
-    suspend fun selectWorkflow(workflow: String) { store.guardedEdit { it[selectedKey]=workflow } }
-    suspend fun startTuesday(date: LocalDate) { store.guardedEdit { values ->
+    suspend fun selectWorkflow(workflow: String) { edit { it[selectedKey]=workflow } }
+    suspend fun startTuesday(date: LocalDate) { edit { values ->
         val existing=decode(values[key]); check(values[key]!=null)
         val workflow=date.toString()
         val templateIds=tuesdayFrozenTemplate(date).map { it.id }.toSet()
@@ -106,7 +135,7 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
         values[key]=encode(linked+template.filter { candidate -> existing.none { it.id==candidate.id } })
         values[selectedKey]=workflow
     } }
-    suspend fun startWednesday(date:LocalDate) { store.guardedEdit { values ->
+    suspend fun startWednesday(date:LocalDate) { edit { values ->
         val existing=decode(values[key]);check(values[key]!=null)
         val workflow=wednesdayWorkflowId(date)
         val records=decodeTrucks(values[trucksKey])
@@ -126,7 +155,7 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
         }
         values[selectedKey]=workflow
     } }
-    suspend fun setTruckArrived(date:LocalDate,arrived:Boolean,zone:ZoneId=ZoneId.systemDefault()) { store.guardedEdit { values ->
+    suspend fun setTruckArrived(date:LocalDate,arrived:Boolean,zone:ZoneId=ZoneId.systemDefault()) { edit { values ->
         val records=decodeTrucks(values[trucksKey]);check(records.any { it.date==date }) { "Open a saved Wednesday workflow first." }
         values[trucksKey]=encodeTrucks(records.map { record ->
             if(record.date!=date || (record.arrival!=null)==arrived) record
@@ -160,7 +189,7 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
         reviewed.filter { it.family.isNotBlank() }.groupBy { normalizeEndcap(it.family) }.values.forEach { rows ->
             require(rows.map { it.category }.distinct().size==1) { "Choose one layout category for each family." }
         }
-        store.guardedEdit { values ->
+        edit { values ->
             val existing=decode(values[key]);check(values[key]!=null)
             val plan="$week|${normalizeEndcap(location)}"
             val old=existing.filter { it.plan==plan }
@@ -191,17 +220,17 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
     }
     suspend fun editProduct(id:String,name:String,sku:String) {
         validate(name,"","");require(sku.length<=60)
-        store.guardedEdit { values ->
+        edit { values ->
             val tasks=decode(values[key]);val task=tasks.single { it.id==id };require(task.plan.isNotBlank())
             require(tasks.none { it.id!=id && it.plan==task.plan && sameEndcapProduct(EndcapProduct(name,sku),EndcapProduct(it.title,it.sku)) }) { "This product already exists in this display plan." }
             values[key]=encode(tasks.map { if(it.id==id) it.copy(title=name.trim(),sku=sku.trim(),sourceNames=(it.sourceNames+normalizeEndcap(it.title)).distinct(),sourceSkus=(it.sourceSkus+listOfNotNull(it.sku.takeIf { sku->sku.isNotBlank() }?.let(::normalizeEndcap))).distinct()) else it })
         }
     }
-    suspend fun removeProduct(id:String) { store.guardedEdit { values ->
+    suspend fun removeProduct(id:String) { edit { values ->
         val tasks=decode(values[key]);require(tasks.single { it.id==id }.plan.isNotBlank())
         values[key]=encode(tasks.filterNot { it.id==id })
     } }
-    private suspend fun change(id:String, update:(FrozenTask)->FrozenTask) { store.guardedEdit { values ->
+    private suspend fun change(id:String, update:(FrozenTask)->FrozenTask) { edit { values ->
         val tasks=decode(values[key]); check(tasks.any { it.id==id }) { "Task no longer exists. Reopen Frozen Tasks." }
         val selected=values[selectedKey].orEmpty()
         val updated=tasks.map { task -> if(task.id==id) {

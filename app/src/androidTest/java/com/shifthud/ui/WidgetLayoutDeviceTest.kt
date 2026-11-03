@@ -33,7 +33,7 @@ class WidgetLayoutDeviceTest {
             .withMetrics(listOf(session),emptyList(),PlannerSettings(),WeeklyTargetSettings(),now,ZoneId.systemDefault())
         val widget=object:GlanceAppWidget() {
             override val sizeMode=SizeMode.Exact
-            override suspend fun provideGlance(context:Context,id:GlanceId) { provideContent { WidgetContent(state,context,listOf(QuickFindItem(1,"Coconut milk","2",isFavorite=true,createdAt=now,updatedAt=now)),listOf(AisleGuideEntry(1,"1","Juice",now,now),AisleGuideEntry(2,"2","Cereal, Coffee",now,now),AisleGuideEntry(3,"16","Bread, Peanut Butter, Rice Cakes",now,now))) } }
+            override suspend fun provideGlance(context:Context,id:GlanceId) { provideContent { WidgetContent(state,context,WidgetFrozenState(LocalDate.now(),5,7,listOf("Finish remaining Frozen freight","Review inventory counts","Prepare endcap transition"),true,7)) } }
         }
         var chosen by mutableStateOf(ShiftHudWidget.COMPACT)
         var remote by mutableStateOf<android.widget.RemoteViews?>(null)
@@ -66,6 +66,23 @@ class WidgetLayoutDeviceTest {
             }
             ui.runOnIdle {
                 val all=texts(root!!)
+                assertFalse(all.any {it.text.toString().contains("FAVORITES") || it.text.toString().contains("AISLE GUIDE")})
+                if(size.width>=320.dp && size.height>=300.dp) {
+                    listOf("OPEN APP","TASKS","QUICK FIND").forEach {label->
+                        val link=all.single {it.text.toString()==label}
+                        val bounds=android.graphics.Rect()
+                        assertTrue("$label visible",link.getGlobalVisibleRect(bounds))
+                        val clickable=generateSequence(link as android.view.View) {it.parent as? android.view.View}
+                            .takeWhile {it!==root}.any {it.hasOnClickListeners()}
+                        assertTrue("$label has a clickable Glance container",clickable)
+                    }
+                }
+                if(size.height>=480.dp) {
+                    val add=all.single {it.text.toString()=="+1 FLOAT"}
+                    val bounds=android.graphics.Rect()
+                    assertTrue("Float action directly visible",add.getGlobalVisibleRect(bounds))
+                    assertEquals("Float action not clipped",add.height,bounds.height());assertTrue(add.hasOnClickListeners())
+                }
                 val end=all.single { it.text.toString()=="END LUNCH" }
                 val clock=all.filterIsInstance<Chronometer>().single()
                 assertEquals(state.lunchMetric!!.tone.argb.toInt(),clock.currentTextColor)

@@ -16,6 +16,7 @@ import java.time.LocalDate
 
 @Composable fun FrozenDailyScreen(vm:FrozenTasksViewModel,openCountRoute:()->Unit,openManual:()->Unit,
     currentDate:()->LocalDate={LocalDate.now()},schedule:List<ScheduledShift> = emptyList(),scheduleLoaded:Boolean=true) {
+    val floats by vm.floats.collectAsStateWithLifecycle()
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
@@ -62,6 +63,7 @@ import java.time.LocalDate
                 resolveByOther={vm.resolveDailyByOther(date,it)},dismissTask={vm.dismissDaily(date,it)},
                 sources=rows.orEmpty().associate { it.task.id to it.sources },listState=listState,
                 controls={
+                    FloatCounter(floats,date,today,vm::adjustFloat)
                     TextButton(onClick={tools=!tools}) {Text("Workflow tools & history",Modifier.fillMaxWidth())}
                     if(tools) {
                         Text("Viewing tasks does not record a work assignment.",style=MaterialTheme.typography.bodySmall)
