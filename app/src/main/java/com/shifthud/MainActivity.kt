@@ -27,6 +27,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.*
 import com.shifthud.ui.*
+import com.shifthud.widget.openWidgetDestination
 import com.shifthud.ui.dashboard.DashboardScreen
 import com.shifthud.ui.schedule.ScheduleScreen
 import com.shifthud.ui.settings.SettingsScreen
@@ -92,9 +93,9 @@ class MainActivity : ComponentActivity() {
                 val error by vm.error.collectAsStateWithLifecycle()
                 val nav = rememberNavController()
                 LaunchedEffect(widgetDestination) {
-                    widgetDestination?.takeIf { it == "Schedule" || it == "Dashboard" || it == "Settings" || it == com.shifthud.widget.QUICK_FIND_DESTINATION }?.let { destination ->
+                    widgetDestination?.takeIf { it == "Schedule" || it == "Dashboard" || it == "Settings" || it == com.shifthud.widget.QUICK_FIND_DESTINATION || it == com.shifthud.widget.TASKS_DESTINATION }?.let { destination ->
                         if (destination == com.shifthud.widget.QUICK_FIND_DESTINATION) quickFindFocusRequest++
-                        nav.navigate(destination) { popUpTo(nav.graph.startDestinationId); launchSingleTop = true }
+                        nav.openWidgetDestination(destination)
                     }
                     widgetDestination = null
                 }

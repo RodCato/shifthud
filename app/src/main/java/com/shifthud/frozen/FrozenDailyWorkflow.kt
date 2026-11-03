@@ -48,3 +48,9 @@ fun dailyFrozenRows(tasks:List<FrozenTask>,date:LocalDate):List<FrozenDailyRow> 
         FrozenDailyRow(representative.copy(state=when { unfinished.isEmpty()->FrozenState.COMPLETED;carry->FrozenState.CARRY_OVER;else->representative.state }),sources)
     }
 }
+
+/** A rendered action is valid only for these exact source records, including history.
+ * No new persisted revision or widget copy is needed. */
+fun FrozenDailyRow.actionRevision():String = java.security.MessageDigest.getInstance("SHA-256")
+    .digest(sources.sortedBy {it.id}.toString().toByteArray(Charsets.UTF_8))
+    .joinToString("") {"%02x".format(it)}
