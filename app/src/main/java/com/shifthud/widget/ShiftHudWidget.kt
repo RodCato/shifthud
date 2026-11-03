@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.catch
 import java.time.*
 
 class ShiftHudWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Responsive(setOf(COMPACT, NORMAL, EXPANDED, TALL, LARGE, HUGE))
+    override val sizeMode = SizeMode.Exact
     // Room + Preferences DataStore are authoritative. Glance stores no session or timer state.
     override val stateDefinition = null
 
@@ -99,9 +99,10 @@ internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFro
     val muted = ColorProvider(Color(0xFFBACBBE))
     val primary = data.command?.let { widgetAction(it) } ?: openApp(context, data.destination)
     val fontScale=context.resources.configuration.fontScale
-    val pinnedCounter=expanded && size.height>=480.dp && fontScale<=1.3f
-    val roomy=normal && (fontScale<=1.3f || size.height>=600.dp)
+    val pinnedCounter=expanded
+    val roomy=normal && (!expanded || size.height>=480.dp) && (fontScale<=1.3f || size.height>=600.dp)
     Column(GlanceModifier.fillMaxSize().background(Color(0xFF15221A)).padding(12.dp).appWidgetBackground()) {
+        val header: @Composable () -> Unit = {
         val lunch=data.lunchMetric
         if(lunch!=null) {
             val timerSize=if(fontScale>1.3f)24f else if(size.height>=480.dp)48f else if(normal)36f else 28f
@@ -120,11 +121,14 @@ internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFro
         if(roomy) {
             WidgetPaid(data.todayPaid,white,muted)
         }
-        // Secondary information may scroll in small/large-font hosts. Primary timer and action
-        // stay outside the collection. Larger hosts also keep the float controls directly visible.
+        }
+        if(!expanded) header()
+        // Secondary information may scroll in small/large-font hosts. All actions remain fixed.
+        // Checklist rows are budgeted against actual host dimensions, including wrapped titles.
         androidx.glance.appwidget.lazy.LazyColumn(GlanceModifier.fillMaxWidth().defaultWeight()) {
         item {
         Column(GlanceModifier.fillMaxWidth()) {
+        if(expanded) Column(GlanceModifier.fillMaxWidth()) { header() }
         if(data.lunchMetric==null) Text(data.detailForSize(normal),style=TextStyle(color=muted,fontSize=12.sp),maxLines=if(data.completedLunch!=null)3 else 2)
         if(normal && !roomy) WidgetPaid(data.todayPaid,white,muted)
         if(normal) data.scheduledOut?.let { Text(it,style=TextStyle(color=muted,fontSize=12.sp),maxLines=2) }
@@ -141,9 +145,24 @@ internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFro
                 Text("TODAY'S FROZEN TASKS",style=TextStyle(color=muted,fontSize=11.sp,fontWeight=FontWeight.Bold),maxLines=2)
                 Text(frozen.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d",context.resources.configuration.locales[0])),style=TextStyle(color=muted,fontSize=11.sp),maxLines=1)
                 Text(frozen.summary,style=TextStyle(color=white,fontSize=14.sp,fontWeight=FontWeight.Bold),maxLines=2)
-                frozen.unfinished.take(if(size.height>=480.dp)3 else if(size.height>=360.dp)2 else 1).forEach {title->
-                    Text("• $title",modifier=GlanceModifier.semantics {contentDescription=title},style=TextStyle(color=white,fontSize=12.sp),maxLines=if(size.height>=600.dp)2 else 1)
+                val visible=checklistCapacity(context,size,data,frozen)
+                // Glance RemoteViews columns support at most ten direct children.
+                // Group rows so large checklists are not silently dropped by translation.
+                Column(GlanceModifier.fillMaxWidth()) {
+                frozen.tasks.take(visible).chunked(10).forEach { group ->
+                Column(GlanceModifier.fillMaxWidth()) {
+                group.forEach {task->
+                    Text(task.label,modifier=GlanceModifier.fillMaxWidth().padding(vertical=2.dp)
+                        .clickable(openApp(context,TASKS_DESTINATION))
+                        .semantics {contentDescription="${if(task.completed) "Completed" else "Unfinished"}: ${task.title}"},
+                        style=TextStyle(color=if(task.completed)muted else white,fontSize=12.sp),maxLines=Int.MAX_VALUE)
                 }
+                }
+                }
+                }
+                if(visible<frozen.tasks.size) Text("+${frozen.tasks.size-visible} more tasks — Open Tasks",
+                    modifier=GlanceModifier.fillMaxWidth().clickable(openApp(context,TASKS_DESTINATION)),
+                    style=TextStyle(color=white,fontSize=12.sp,fontWeight=FontWeight.Bold),maxLines=2)
             }
             if(!pinnedCounter) WidgetFloatCounter(frozen,white,muted)
         }
@@ -219,4 +238,35 @@ class ShiftHudWidgetReceiver : GlanceAppWidgetReceiver() {
         super.onDisabled(context)
         WorkManager.getInstance(context).cancelUniqueWork(WidgetRefresh.WORK_NAME)
     }
+}
+
+/** Measure wrapped text using the host density and accessibility font scale. The remaining
+ * height belongs to task rows; reserve all existing shift details and fixed controls first. */
+private fun checklistCapacity(context:Context,size:DpSize,data:WidgetState,frozen:WidgetFrozenState):Int {
+    val metrics=context.resources.displayMetrics
+    val scale=context.resources.configuration.fontScale
+    val width=((size.width.value-24)*metrics.density).toInt().coerceAtLeast(1)
+    fun text(value:String?,sp:Int,lines:Int=Int.MAX_VALUE):Float {
+        if(value==null)return 0f
+        val paint=android.text.TextPaint().apply {textSize=android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,sp.toFloat(),metrics)}
+        val layout=android.text.StaticLayout.Builder.obtain(value,0,value.length,paint,width)
+            .setIncludePad(true).setMaxLines(lines).build()
+        return layout.height/metrics.density+2 // conservative rounding / Glance text padding
+    }
+    val lunch=data.lunchMetric
+    val header=if(lunch==null)text(data.headline,24,2) else {
+        val timer=if(scale>1.3f)24f else if(size.height>=480.dp)48f else 36f
+        text("ON LUNCH",14,1)+timer*scale*1.3f+text(lunch.label,14,2)
+    }
+    val paid=6+text("TODAY’S PAID",12,1)+text(data.todayPaid ?: "—",24,1)
+    val footer=(if(scale>1.3f)60 else 48)+
+        maxOf(48f,text("FLOATS TODAY",11,2)+text(frozen.floatCount?.toString() ?: "—",24,1))+12+
+        (if(data.actionLabel!="OPEN APP")48 else 0)
+    val details=(if(lunch==null)text(data.detailForSize(true),12,if(data.completedLunch!=null)3 else 2) else 0f)+
+        text(data.scheduledOut,12,2)+text(data.extra,14,2)+
+        (data.weekly?.let {8+text("WEEKLY · ${it.paid} / ${it.target}",16,2)+9+text(it.detail,12,2)} ?: 0f)
+    val heading=8+text("TODAY'S FROZEN TASKS",11,2)+text(frozen.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d",context.resources.configuration.locales[0])),11,1)+text(frozen.summary,14,2)
+    val available=size.height.value-24-header-paid-footer-details-heading-6-text(data.updated+" · ↻",12,1)-8
+    return visibleWidgetTaskCount(frozen.tasks.map {text(it.label,12)+4},available,
+        text("+${frozen.tasks.size} more tasks — Open Tasks",12,2))
 }

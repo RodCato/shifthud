@@ -33,7 +33,7 @@ class WidgetLayoutDeviceTest {
             .withMetrics(listOf(session),emptyList(),PlannerSettings(),WeeklyTargetSettings(),now,ZoneId.systemDefault())
         val widget=object:GlanceAppWidget() {
             override val sizeMode=SizeMode.Exact
-            override suspend fun provideGlance(context:Context,id:GlanceId) { provideContent { WidgetContent(state,context,WidgetFrozenState(LocalDate.now(),5,7,listOf("Finish remaining Frozen freight","Review inventory counts","Prepare endcap transition"),true,7)) } }
+            override suspend fun provideGlance(context:Context,id:GlanceId) { provideContent { WidgetContent(state,context,WidgetFrozenState(LocalDate.now(),7,11,(1..11).map {WidgetFrozenTask("$it","Persisted responsibility $it",it>4)},true,7)) } }
         }
         var chosen by mutableStateOf(ShiftHudWidget.COMPACT)
         var remote by mutableStateOf<android.widget.RemoteViews?>(null)
@@ -46,7 +46,7 @@ class WidgetLayoutDeviceTest {
             remote?.let { frame.updateAppWidget(it) }
         }) }
         fun texts(view:android.view.View):List<TextView> = if(view is android.view.ViewGroup) (0 until view.childCount).flatMap { texts(view.getChildAt(it)) } else listOfNotNull(view as? TextView)
-        val cases=listOf(ShiftHudWidget.COMPACT,ShiftHudWidget.NORMAL,ShiftHudWidget.EXPANDED,ShiftHudWidget.TALL,ShiftHudWidget.LARGE).map { it to 31 } + listOf(26,60,65).map { ShiftHudWidget.LARGE to it }
+        val cases=listOf(ShiftHudWidget.COMPACT,ShiftHudWidget.NORMAL,ShiftHudWidget.EXPANDED,ShiftHudWidget.TALL,ShiftHudWidget.LARGE,DpSize(320.dp,800.dp)).map { it to 31 } + listOf(26,60,65).map { ShiftHudWidget.LARGE to it }
         for((size,minutes) in cases) {
             val sample=session.copy(lunchStart=now.minusSeconds(minutes*60L))
             state=WidgetStateFactory(ShiftEngine()).create(emptyList(),sample,360,now,ZoneId.systemDefault(),Locale.US)
@@ -77,12 +77,27 @@ class WidgetLayoutDeviceTest {
                         assertTrue("$label has a clickable Glance container",clickable)
                     }
                 }
-                if(size.height>=480.dp) {
+                if(size.width>=320.dp) {
                     val add=all.single {it.text.toString()=="+1 FLOAT"}
                     val bounds=android.graphics.Rect()
                     assertTrue("Float action directly visible",add.getGlobalVisibleRect(bounds))
                     assertEquals("Float action not clipped",add.height,bounds.height());assertTrue(add.hasOnClickListeners())
                 }
+                if(size.height>=800.dp && context.resources.configuration.fontScale<=1.3f) {
+                    val rows=all.filter {it.text.toString().contains("Persisted responsibility")}
+                    assertEquals("All eleven tasks fit",11,rows.size)
+                    assertTrue(rows.take(4).all {it.text.startsWith("•")})
+                    assertTrue(rows.drop(4).all {it.text.startsWith("✓")})
+                    assertNotEquals(rows.first().currentTextColor,rows.last().currentTextColor)
+                    rows.forEach {row->
+                        assertTrue(generateSequence(row as android.view.View) {it.parent as? android.view.View}
+                            .takeWhile {it!==root}.any {it.hasOnClickListeners()})
+                        val bounds=android.graphics.Rect()
+                        assertTrue(row.getGlobalVisibleRect(bounds))
+                        assertEquals("Task fully visible",row.height,bounds.height())
+                    }
+                    assertFalse(all.any {it.text.contains("more tasks")})
+                } else if(size.width>=320.dp) assertTrue(all.any {it.text.contains("more tasks — Open Tasks")})
                 val end=all.single { it.text.toString()=="END LUNCH" }
                 val clock=all.filterIsInstance<Chronometer>().single()
                 assertEquals(state.lunchMetric!!.tone.argb.toInt(),clock.currentTextColor)

@@ -12,11 +12,11 @@ The last 1,024 command IDs are retained for retry deduplication, including acros
 
 ## Widget content and actions
 
-Expanded widgets replace Favorites/Aisle Guide rendering and subscriptions with today's persisted Frozen summary: date, merged completion count and up to three pending titles (fewer on shorter hosts). Archived, dismissed and associate-resolved sources are excluded using the existing daily-row derivation. Summary taps open Tasks. All-complete and no-recurring-work states have explicit messages.
+Expanded widgets replace Favorites/Aisle Guide rendering and subscriptions with today's persisted Frozen summary: date, merged completion count and the full ordered checklist. Unfinished responsibilities precede subdued, checked completed tasks. Exact host dimensions and measured wrapped text determine the visible prefix; omitted tasks have an explicit “+N more tasks — Open Tasks” link. Archived, dismissed and associate-resolved sources are excluded using the existing daily-row derivation. Summary taps open Tasks. All-complete and no-recurring-work states have explicit messages.
 
 Widget initialization uses the existing idempotent daily initializer without changing the app's selected workflow or triggering another redraw. Repeated refreshes do not duplicate tasks or mark anything completed. Future previews remain read-only.
 
-The upper shift/lunch area and weekly metrics retain their existing calculation paths. Larger widgets pin the float controls above the existing shift action and the OPEN APP / TASKS / QUICK FIND footer. Shorter expanded widgets keep floats in the scrollable area to preserve shift controls. Compact/normal variants retain their shift-focused controls. Favorites and Aisle Guide remain available in Quick Find; their application models, CRUD and search behavior are unchanged.
+The upper shift/lunch area and weekly metrics retain their existing calculation paths. All expanded widgets pin the float controls above the existing shift action and the OPEN APP / TASKS / QUICK FIND footer. Secondary information can scroll on short or large-font hosts; it cannot push controls off-screen. Task taps open today’s Tasks without changing completion (individual-task navigation is not currently supported). Compact/normal variants retain their shift-focused controls. Favorites and Aisle Guide remain available in Quick Find; their application models, CRUD and search behavior are unchanged.
 
 Float callbacks execute only the counter command. A successful Frozen-store mutation requests `WidgetRefresh.redrawHistorical()`, the existing redraw-only path. This does not reconcile lunch, start a service or refresh notifications. Glance observes task/count flows during its composition session, and updateAll refreshes installed instances. Duplicate idempotent task initialization avoids redundant redraws.
 
@@ -45,3 +45,7 @@ Physical acceptance:
 4. Browse a future date in Tasks, then tap the widget's TASKS shortcut; it must return to today. Verify OPEN APP and QUICK FIND destinations.
 5. Check Favorites/Aisle Guide inside Quick Find, and existing start/end lunch controls.
 6. Verify restart/reboot and midnight/time-zone rollover on the physical device; previous totals must remain in history. Check launcher-specific tap delivery, large fonts, TalkBack and shorter widget scrolling.
+
+Full-checklist follow-up: actual RemoteViews tests cover eleven persisted-style synthetic titles, four unfinished followed by seven complete, with all rows visible at 320 × 800dp; smaller hosts explicitly indicate omitted tasks. No refresh architecture or task persistence changes. Physical launcher sizing and accessibility remain device acceptance checks.
+
+Follow-up validation: 1,035 unit tests per debug/release variant pass (backup restoration excluded); debug build and lint pass with 17 existing warnings and one hint. Actual RemoteViews layout tests pass at normal and 200% font sizes; shared float-counter device test passes. Glance task columns are grouped within the ten-child limit.
