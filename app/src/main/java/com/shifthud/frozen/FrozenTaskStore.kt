@@ -15,8 +15,8 @@ private val Context.frozenTaskStore by preferencesDataStore(name="frozen_tasks")
 
 /** Separate, atomic preferences; malformed data is surfaced, never reset to a template. */
 class FrozenTaskStore(private val store: DataStore<Preferences>, private val clock: Clock = Clock.systemUTC(),
-    private val zone:()->ZoneId = {ZoneId.systemDefault()},private val onChanged:suspend ()->Unit = {}) {
-    constructor(context: Context,onChanged:suspend ()->Unit = {}): this(context.applicationContext.frozenTaskStore,onChanged=onChanged)
+    private val zone:()->ZoneId = {ZoneId.systemDefault()},private val onChanged:suspend ()->Unit = {},private val scheduledDates:suspend ()->Set<LocalDate> = {emptySet()}) {
+    constructor(context: Context,onChanged:suspend ()->Unit = {},scheduledDates:suspend ()->Set<LocalDate> = {emptySet()}): this(context.applicationContext.frozenTaskStore,onChanged=onChanged,scheduledDates=scheduledDates)
     private val floatKey=stringPreferencesKey("daily_float_counts_v1")
     private val floatRequestsKey=stringPreferencesKey("float_requests_v1")
     val floats=store.data.map {decodeFloatCounts(it[floatKey])}
@@ -58,7 +58,9 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
     private val freshStartKey=booleanPreferencesKey("carryovers_archived_before_2026_11_01")
     val dailyDates=store.data.map { values -> values[dailyDatesKey].orEmpty().map(LocalDate::parse).sortedDescending() }
     /** Initializes only missing templates. Existing tasks, notes, punches and assignment state are untouched. */
-    suspend fun openDaily(date:LocalDate,select:Boolean=true,notify:Boolean=true) { edit(notify) { values ->
+    suspend fun openDaily(date:LocalDate,select:Boolean=true,notify:Boolean=true) {
+        val scheduled=date in scheduledDates() // Read Room before entering the DataStore transaction.
+        edit(notify) { values ->
         val original=decode(values[key]);val workflow=dailyWorkflowId(date)
         val existing=if(values[freshStartKey]==true) original else original.map { task ->
             if(task.date<FROZEN_CARRYOVER_BASELINE && task.state!=FrozenState.COMPLETED)
@@ -72,8 +74,15 @@ class FrozenTaskStore(private val store: DataStore<Preferences>, private val clo
         val fridayDates=values[fridayDatesKey].orEmpty()
         val repairFriday=date.dayOfWeek==DayOfWeek.FRIDAY && date.toString() !in fridayDates
         if(repairFriday) values[fridayDatesKey]=fridayDates+date.toString()
-        val additions=if(date.toString() in registered && !repairFriday) emptyList() else dailyFrozenTemplate(date)
-            .filter { candidate -> existing.none { it.id==candidate.id } }
+        val template=dailyFrozenTemplate(date,scheduled)
+        val canRefine=date>=LocalDate.now(clock.withZone(zone())) &&
+            existing.any {it.date==date && it.state!=FrozenState.COMPLETED && !it.carryoverArchived && !it.carryoverExcluded && it.resolvedByOtherAt==null}
+        val candidates=if(date.toString() !in registered || repairFriday) template
+            else if(canRefine) frozenChecklistRefinements(date,scheduled,template.isNotEmpty() || existing.any {it.date==date}) else emptyList()
+        val refinementIds=frozenChecklistRefinements(date,scheduled,template.isNotEmpty() || existing.any {it.date==date}).map {it.id}.toSet()
+        val additions=candidates
+            .filter { candidate -> existing.none { it.id==candidate.id } &&
+                (candidate.id !in refinementIds || canRefine || existing.none {it.date==date}) }
             .map { if(it.date<FROZEN_CARRYOVER_BASELINE) it.copy(carryoverArchived=true) else it }
         values[templateDatesKey]=registered+date.toString()
         val linked=(existing+additions).map { task ->

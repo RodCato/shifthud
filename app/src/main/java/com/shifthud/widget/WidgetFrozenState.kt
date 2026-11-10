@@ -3,7 +3,8 @@ package com.shifthud.widget
 import com.shifthud.frozen.*
 import java.time.LocalDate
 
-data class WidgetFrozenTask(val id:String,val title:String,val completed:Boolean,val revision:String="") {
+data class WidgetFrozenTask(val id:String,val title:String,val completed:Boolean,val revision:String="",val optional:Boolean=false) {
+    val displayTitle get()=title+if(optional) " · Optional" else ""
     val label get()="${if(completed) "✓" else "•"} $title"
 }
 
@@ -27,7 +28,7 @@ data class WidgetFrozenState(val date:LocalDate,val completed:Int=0,val total:In
 fun widgetFrozenState(tasks:List<FrozenTask>,counts:FloatCounts,date:LocalDate):WidgetFrozenState {
     val rows=dailyFrozenRows(tasks,date)
     return WidgetFrozenState(date,rows.count {it.task.state==FrozenState.COMPLETED},rows.size,
-        rows.sortedBy {when(it.task.state) {FrozenState.CARRY_OVER->0; FrozenState.COMPLETED->2; else->1}}
-            .map {WidgetFrozenTask(it.task.id,it.task.title,it.task.state==FrozenState.COMPLETED,it.actionRevision())},
+        rows.sortedBy {when {it.task.state==FrozenState.COMPLETED->3;it.task.optionalTraining->2;it.task.state==FrozenState.CARRY_OVER->0;else->1}}
+            .map {WidgetFrozenTask(it.task.id,it.task.title,it.task.state==FrozenState.COMPLETED,it.actionRevision(),it.task.optionalTraining)},
         dailyFrozenTemplate(date).isNotEmpty(),counts[date])
 }

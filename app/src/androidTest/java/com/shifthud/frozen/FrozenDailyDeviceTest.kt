@@ -26,7 +26,8 @@ class FrozenDailyDeviceTest {
     private val job=SupervisorJob()
     private val file=File(context.cacheDir,"daily-frozen-isolated.preferences_pb")
     private val dataStore=PreferenceDataStoreFactory.create(scope=CoroutineScope(Dispatchers.IO+job),produceFile={file})
-    private val store=FrozenTaskStore(dataStore)
+    private var scheduledDays=emptySet<LocalDate>()
+    private val store=FrozenTaskStore(dataStore,scheduledDates={scheduledDays})
     @After fun close()=runBlocking {ui.runOnIdle {models.clear()};job.cancelAndJoin();file.delete();Unit}
     private fun show(text:String) {ui.onNode(hasScrollAction()).performScrollToNode(hasText(text))}
     private fun capture(name:String) {
@@ -174,5 +175,26 @@ class FrozenDailyDeviceTest {
         ui.onNodeWithContentDescription("Reopen ${task.title}").performClick()
         ui.waitUntil(10000) {runBlocking {!widgetFrozenState(store.tasks.first(),FloatCounts(),today).tasks.single {it.id==task.id}.completed}}
         assertEquals("Preserved notes",store.tasks.first().single {it.id==task.id}.notes)
+    }
+    @Test fun optionalTrainingAndEndcapGuidanceUseExistingTaskCheckboxes()=runBlocking {
+        val monday=LocalDate.of(2026,11,9)
+        scheduledDays=setOf(monday)
+        val vm=FrozenTasksViewModel(store,automatic=true).also {models.put("daily",it)}
+        ui.setContent {ShiftHudTheme {Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {
+            FrozenDailyScreen(vm,{}, {},currentDate={monday})
+        }}}
+        ui.waitUntil(10000) {runBlocking {store.tasks.first().count {it.date==monday}==13}}
+        show("Manage Outgoing Endcap Inventory")
+        ui.onNodeWithContentDescription("Complete Manage Outgoing Endcap Inventory").assertHasClickAction()
+        show("Check Endcap Before Opening Ad Cases")
+        ui.onNodeWithContentDescription("Complete Check Endcap Before Opening Ad Cases").assertHasClickAction()
+        show("OPTIONAL · LOW PRIORITY (1)")
+        ui.onNodeWithText("OPTIONAL · LOW PRIORITY (1)").assertIsDisplayed()
+        val title="Check Available CBTs / GRS Training"
+        show(title);ui.onNodeWithContentDescription("Complete $title").performClick()
+        ui.waitUntil(10000) {runBlocking {widgetFrozenState(store.tasks.first(),FloatCounts(),monday).tasks.single {it.optional}.completed}}
+        val saved=store.tasks.first().single {it.optionalTraining}
+        assertEquals(1,saved.history.size)
+        assertFalse(dailyFrozenRows(store.tasks.first(),monday.plusDays(1)).any {it.task.id==saved.id})
     }
 }

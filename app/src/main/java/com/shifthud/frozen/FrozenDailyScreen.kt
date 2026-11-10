@@ -35,12 +35,12 @@ import java.time.LocalDate
     val date=browsing?.let(LocalDate::parse) ?: today
     val preview=date>today
     var loaded by remember { mutableStateOf<LocalDate?>(null) }
-    LaunchedEffect(date,today,weekView) {
+    LaunchedEffect(date,today,weekView,schedule) {
         loaded=null
         if(!preview && !weekView) vm.openDaily(date)
         loaded=date
     }
-    val rows=tasks?.let {frozenPlanningRows(it,date,today)}
+    val rows=tasks?.let {frozenPlanningRows(it,date,today,schedule.any {shift->shift.date==date})}
     val truck=trucks.singleOrNull { it.date==date }
     val listState=key(date) { rememberLazyListState() }
     if(importing) {

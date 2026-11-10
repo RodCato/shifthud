@@ -66,7 +66,8 @@ class ShiftHudWidget : GlanceAppWidget() {
                 }.catch {emit(WidgetFrozenState(LocalDate.now(),error="Tasks unavailable · open Tasks"))}
             }
             val frozen by frozenUpdates.collectAsState(initialFrozen)
-            LaunchedEffect(frozen.date) {
+            val taskSchedule by app.repository.schedule.collectAsState(initial.schedule)
+            LaunchedEffect(frozen.date,taskSchedule) {
                 try {app.frozenTasks.openDaily(frozen.date,select=false,notify=false)}
                 catch(e:kotlinx.coroutines.CancellationException) {throw e}
                 catch(_:Exception) { /* Keep the shift area available; next redraw retries. */ }
@@ -153,9 +154,9 @@ internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFro
                 Column(GlanceModifier.fillMaxWidth()) {
                 group.forEach {task->
                     CheckBox(checked=task.completed,onCheckedChange=frozenTaskWidgetAction(frozen.date,task),
-                        text=task.title,modifier=GlanceModifier.fillMaxWidth().height(taskTouchHeight(context,size,task.title).dp)
+                        text=task.displayTitle,modifier=GlanceModifier.fillMaxWidth().height(taskTouchHeight(context,size,task.displayTitle).dp)
                             .clickable(frozenTaskWidgetAction(frozen.date,task))
-                            .semantics {contentDescription="${if(task.completed) "Reopen" else "Complete"}: ${task.title}"},
+                            .semantics {contentDescription="${if(task.completed) "Reopen" else "Complete"}: ${task.displayTitle}"},
                         style=TextStyle(color=if(task.completed)muted else white,fontSize=12.sp),maxLines=Int.MAX_VALUE)
                 }
                 }
@@ -279,7 +280,7 @@ private fun checklistCapacity(context:Context,size:DpSize,data:WidgetState,froze
         (data.weekly?.let {8+text("WEEKLY · ${it.paid} / ${it.target}",16,2)+9+text(it.detail,12,2)} ?: 0f)
     val heading=8+text("TODAY'S FROZEN TASKS",11,2)+text(frozen.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d",context.resources.configuration.locales[0])),11,1)+text(frozen.summary,14,2)
     val available=size.height.value-24-header-paid-footer-details-heading-6-text(data.updated+" · ↻",12,1)-8
-    return visibleWidgetTaskCount(frozen.tasks.map {taskTouchHeight(context,size,it.title)},available,
+    return visibleWidgetTaskCount(frozen.tasks.map {taskTouchHeight(context,size,it.displayTitle)},available,
         text("+${frozen.tasks.size} more tasks — Open Tasks",12,2))
 }
 
