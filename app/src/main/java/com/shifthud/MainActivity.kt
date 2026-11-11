@@ -39,6 +39,8 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         if((application as ShiftHudApplication).recoveryError!=null)return
+        com.shifthud.notification.paycheck.PaycheckReminders.createChannel(this)
+        lifecycleScope.launch { (application as ShiftHudApplication).paycheckReminders.reschedule() }
         com.shifthud.notification.upcoming.UpcomingReminders.createChannel(this)
         lifecycleScope.launch { (application as ShiftHudApplication).upcoming.reschedule() }
         // Visible-activity recovery is permitted even when Android denied a background start.
@@ -93,9 +95,10 @@ class MainActivity : ComponentActivity() {
                 val error by vm.error.collectAsStateWithLifecycle()
                 val nav = rememberNavController()
                 LaunchedEffect(widgetDestination) {
-                    widgetDestination?.takeIf { it == "Schedule" || it == "Dashboard" || it == "Settings" || it == com.shifthud.widget.QUICK_FIND_DESTINATION || it == com.shifthud.widget.TASKS_DESTINATION }?.let { destination ->
+                    widgetDestination?.takeIf { it == "Paychecks" || it == "Schedule" || it == "Dashboard" || it == "Settings" || it == com.shifthud.widget.QUICK_FIND_DESTINATION || it == com.shifthud.widget.TASKS_DESTINATION }?.let { destination ->
                         if (destination == com.shifthud.widget.QUICK_FIND_DESTINATION) quickFindFocusRequest++
-                        nav.openWidgetDestination(destination)
+                        if(destination=="Paychecks") nav.navigate("Paychecks/${com.shifthud.domain.pay.workWeekFor(java.time.LocalDate.now().minusWeeks(1)).start}") { launchSingleTop=true }
+                        else nav.openWidgetDestination(destination)
                     }
                     widgetDestination = null
                 }

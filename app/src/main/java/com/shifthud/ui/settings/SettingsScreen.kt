@@ -57,6 +57,7 @@ import kotlinx.coroutines.launch
                         "backup" -> com.shifthud.backup.BackupSettingsSection()
                         "history" -> OutlinedButton(onClick=openHistoricalImport) { Text("Historical Data Import") }
                         "lunchAlerts" -> LunchAlertsSection()
+                        "paycheckReminder" -> PaycheckReminderSettingsSection()
                         "upcoming" -> UpcomingSettingsSection()
                         "tests" -> NotificationTestCenterSection()
                         "rates" -> PayRateSettings(data,vm,busy)

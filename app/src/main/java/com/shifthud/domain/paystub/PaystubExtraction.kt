@@ -149,11 +149,7 @@ fun extractPaystub(text:String):PaystubExtraction {
 }
 /** Recomputed after edits. No missing component is silently replaced by zero. */
 fun paystubArithmetic(p:Paycheck):List<String> = buildList {
-    val deductions=p.lines.filter{it.kind==PayrollKind.DEDUCTION}
-    if(p.grossCents!=null && p.netCents!=null && (p.deductionsComplete || deductions.isNotEmpty()) && deductions.all{it.cents!=null}) {
-        val delta=p.grossCents-deductions.sumOf{it.cents!!}-p.netCents
-        if(delta!=0L)add("Gross − confirmed deductions − net differs by ${centsInput(delta)} dollars.")
-    }
+    cashReconciliationWarning(p)?.let { add(it) }
     if(p.netCents!=null && p.deposits.isNotEmpty() && p.deposits.all{it.cents!=null}) {
         val delta=p.netCents-p.deposits.sumOf{it.cents!!}
         if(delta!=0L)add("Net − linked deposits differs by ${centsInput(delta)} dollars.")
@@ -165,7 +161,7 @@ fun paystubArithmetic(p:Paycheck):List<String> = buildList {
 fun paystubRateCheck(p:Paycheck, overtime:BigDecimal?, rates:List<com.shifthud.domain.pay.PayRate>):List<String> {
     if(overtime!=null && overtime.signum()!=0 || p.lines.any{it.kind==PayrollKind.EARNING})return emptyList()
     val hours=p.reportedHours?:return emptyList()
-    val gross=p.grossCents?:return emptyList()
+    val gross=cashWages(p)?:return emptyList()
     val rate=rates.filter{it.effectiveFrom<=p.periodStart}.maxByOrNull{it.effectiveFrom}?:return emptyList()
     if(rates.any{it.effectiveFrom>p.periodStart && it.effectiveFrom<=p.periodEnd})return emptyList()
     val expected=hours.multiply(rate.centsPerHour.toBigDecimal()).setScale(0,java.math.RoundingMode.HALF_UP).longValueExact()

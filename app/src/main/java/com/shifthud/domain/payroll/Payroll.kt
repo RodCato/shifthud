@@ -6,8 +6,9 @@ import java.math.RoundingMode
 import java.time.*
 
 const val MAX_PAYROLL_CENTS = 99_999_999_999L
-enum class PayrollKind { DEDUCTION, EARNING }
-data class PayrollLine(val id: Long = 0, val kind: PayrollKind, val label: String, val cents: Long? = null)
+enum class PayrollKind { DEDUCTION, EARNING, NONCASH }
+data class PayrollLine(val id: Long = 0, val kind: PayrollKind, val label: String, val cents: Long? = null,
+    val taxable: Boolean? = null, val includedInGross: Boolean = false, val category: String? = null)
 data class PayrollDeposit(val id: Long = 0, val date: LocalDate? = null, val cents: Long? = null)
 data class Paycheck(val id: Long = 0, val periodStart: LocalDate, val periodEnd: LocalDate,
     val payDate: LocalDate? = null, val reportedHours: BigDecimal? = null, val grossCents: Long? = null,
@@ -43,20 +44,21 @@ fun validatePaycheck(p: Paycheck) {
     require(p.notes.length<=5000 && p.reference.length<=200) { "Notes or reference are too long." }
     (listOf(p.grossCents,p.netCents)+p.lines.map{it.cents}+p.deposits.map{it.cents}).filterNotNull().forEach { require(it in -MAX_PAYROLL_CENTS..MAX_PAYROLL_CENTS) { "Money amount exceeds the supported range." } }
     require(p.lines.all { it.label.isNotBlank() && it.label.length<=100 }) { "Every payroll category needs a label (up to 100 characters)." }
+    require(p.lines.all { (it.category?.length ?: 0) <= 100 && (it.kind == PayrollKind.NONCASH || (it.taxable == null && !it.includedInGross && it.category == null)) }) { "Noncash classification belongs only to noncash entries." }
     require(p.lines.filter{it.id>0}.map{it.id}.distinct().size==p.lines.count{it.id>0}) { "Duplicate payroll line." }
     require(p.deposits.filter{it.id>0}.map{it.id}.distinct().size==p.deposits.count{it.id>0}) { "Duplicate deposit." }
 }
 enum class ReconciliationStatus(val label: String) { INCOMPLETE("Incomplete"), RECONCILED("Reconciled"), DIFFERENCE("Difference found") }
 data class PayrollReconciliation(val paycheck: Paycheck, val estimate: WorkAnalytics) {
     private fun sum(values: List<Long>) = values.fold(0L,Math::addExact)
-    val knownDeductions get() = sum(paycheck.lines.filter{it.kind==PayrollKind.DEDUCTION}.mapNotNull{it.cents})
-    val deductions: Long? get() = knownDeductions.takeIf { paycheck.deductionsComplete && paycheck.lines.filter{it.kind==PayrollKind.DEDUCTION}.all{it.cents!=null} }
+    val knownDeductions get() = confirmedDeductions(paycheck.copy(deductionsComplete=true)) ?: sum(paycheck.lines.filter{it.kind==PayrollKind.DEDUCTION && deductionCategory(it.label) !in setOf(DeductionCategory.TAX_TOTAL,DeductionCategory.ALL_TOTAL)}.mapNotNull{it.cents})
+    val deductions: Long? get() = confirmedDeductions(paycheck)
     val knownDeposits get() = sum(paycheck.deposits.mapNotNull{it.cents})
     val deposits: Long? get() = knownDeposits.takeIf { paycheck.deposits.isNotEmpty() && paycheck.deposits.all{it.cents!=null} }
     val hoursDifference get() = paycheck.reportedHours?.subtract(decimalHours(estimate.paid))
-    val grossDifference get() = paycheck.grossCents?.let { gross -> estimate.grossCents?.let { Math.subtractExact(gross,it) } }
+    val grossDifference get() = cashWages(paycheck)?.let { gross -> estimate.grossCents?.let { Math.subtractExact(gross,it) } }
     // Earnings/adjustment lines describe amounts already included in actual gross; never add them twice.
-    val calculatedNet get() = paycheck.grossCents?.let { gross -> deductions?.let { Math.subtractExact(gross,it) } }
+    val calculatedNet get() = calculatedCashNet(paycheck)
     val netDifference get() = calculatedNet?.let { calculated -> paycheck.netCents?.let { Math.subtractExact(calculated,it) } }
     val depositDifference get() = paycheck.netCents?.let { net -> deposits?.let { Math.subtractExact(net,it) } }
     val complete get() = paycheck.payDate!=null && hoursDifference!=null && grossDifference!=null && netDifference!=null && depositDifference!=null && paycheck.deposits.all{it.date!=null} && estimate.activeSessions==0
@@ -66,4 +68,32 @@ data class PayrollReconciliation(val paycheck: Paycheck, val estimate: WorkAnaly
         else -> ReconciliationStatus.DIFFERENCE
     }
     val possibleHoursRounding get() = paycheck.reportedHours?.scale()?.let { it<=2 } == true && hoursDifference?.let { it.signum()!=0 && it.abs()<=BigDecimal("0.005") } == true
+}
+
+/** Only explicitly classified amounts already included in gross reduce the cash paycheck. */
+fun noncashCents(p: Paycheck, predicate: (PayrollLine) -> Boolean = { true }): Long? {
+    val lines = p.lines.filter { it.kind == PayrollKind.NONCASH && predicate(it) }
+    return if (lines.any { it.cents == null }) null else lines.fold(0L) { total, row -> Math.addExact(total, row.cents!!) }
+}
+fun cashWages(p: Paycheck): Long? = p.grossCents?.let { gross ->
+    noncashCents(p) { it.includedInGross }?.let { Math.subtractExact(gross, it) }
+}
+/** Summary rows corroborate components, never add to them. Unknown labels remain legitimate deductions. */
+fun confirmedDeductions(p: Paycheck): Long? {
+    val rows = p.lines.filter { it.kind == PayrollKind.DEDUCTION }
+    if (!p.deductionsComplete || rows.any { it.cents == null }) return null
+    fun sum(lines: List<PayrollLine>) = lines.fold(0L) { total, row -> Math.addExact(total, row.cents!!) }
+    val totals = rows.filter { deductionCategory(it.label) == DeductionCategory.ALL_TOTAL }
+    val taxTotals = rows.filter { deductionCategory(it.label) == DeductionCategory.TAX_TOTAL }
+    val taxes = rows.filter { deductionCategory(it.label) == DeductionCategory.TAX }
+    if (totals.size > 1 || taxTotals.size > 1) return null
+    if (taxTotals.isNotEmpty() && taxes.isNotEmpty() && sum(taxTotals) != sum(taxes)) return null
+    val components = rows - totals - if (taxes.isNotEmpty()) taxTotals else emptyList()
+    if (totals.isNotEmpty() && components.isNotEmpty() && sum(totals) != sum(components)) return null
+    return sum(if (components.isEmpty()) totals else components)
+}
+fun calculatedCashNet(p: Paycheck): Long? = cashWages(p)?.let { cash -> confirmedDeductions(p)?.let { Math.subtractExact(cash,it) } }
+fun cashNetDifference(p: Paycheck): Long? = calculatedCashNet(p)?.let { net -> p.netCents?.let { Math.subtractExact(net,it) } }
+fun cashReconciliationWarning(p: Paycheck): String? = cashNetDifference(p)?.takeIf { it != 0L }?.let {
+    "Unreconciled difference: $${centsInput(it)}" + if (kotlin.math.abs(it) == 1L) " (possible rounding difference; review)" else ""
 }
