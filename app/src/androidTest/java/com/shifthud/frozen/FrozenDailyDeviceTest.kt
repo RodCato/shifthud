@@ -197,4 +197,24 @@ class FrozenDailyDeviceTest {
         assertEquals(1,saved.history.size)
         assertFalse(dailyFrozenRows(store.tasks.first(),monday.plusDays(1)).any {it.task.id==saved.id})
     }
+    @Test fun publixProChecksCompleteIndependentlyAndSimsShowsOpportunityLabel()=runBlocking {
+        val monday=LocalDate.of(2026,11,16)
+        scheduledDays=setOf(monday)
+        val vm=FrozenTasksViewModel(store,automatic=true).also {models.put("daily",it)}
+        ui.setContent {ShiftHudTheme {Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {
+            FrozenDailyScreen(vm,{}, {},currentDate={monday})
+        }}}
+        ui.waitUntil(10000) {runBlocking {store.tasks.first().any {it.id=="pro-morning-$monday"}}}
+        val morning="Check Publix Pro Store Lists"
+        val afternoon="Recheck Publix Pro Store Lists"
+        show(morning);ui.onNodeWithContentDescription("Complete $morning").performClick()
+        ui.waitUntil(10000) {runBlocking {widgetFrozenState(store.tasks.first(),FloatCounts(),monday).tasks.single {it.id=="pro-morning-$monday"}.completed}}
+        assertFalse(widgetFrozenState(store.tasks.first(),FloatCounts(),monday).tasks.single {it.id=="pro-afternoon-$monday"}.completed)
+        show("Review Pending SIMS Corrections")
+        show("When access permits · To do")
+        ui.onNodeWithText("When access permits · To do").assertIsDisplayed()
+        show(afternoon);ui.onNodeWithContentDescription("Complete $afternoon").performClick()
+        ui.waitUntil(10000) {runBlocking {widgetFrozenState(store.tasks.first(),FloatCounts(),monday).tasks.single {it.id=="pro-afternoon-$monday"}.completed}}
+        assertFalse(dailyFrozenRows(store.tasks.first(),monday.plusDays(1)).any {it.task.opportunityBased})
+    }
 }

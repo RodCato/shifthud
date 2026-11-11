@@ -48,6 +48,9 @@ class ShiftHudWidget : GlanceAppWidget() {
             widgetFrozenState(app.frozenTasks.tasks.first(),app.frozenTasks.floats.first(),initialDate)
         } catch(e:kotlinx.coroutines.CancellationException) {throw e}
         catch(_:Exception) {WidgetFrozenState(initialDate,error="Tasks unavailable · open Tasks") }
+        val hostCategory=android.appwidget.AppWidgetManager.getInstance(context).getAppWidgetOptions(
+            GlanceAppWidgetManager(context).getAppWidgetId(id)).getInt(android.appwidget.AppWidgetManager.OPTION_APPWIDGET_HOST_CATEGORY,android.appwidget.AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN)
+        val initialEmployee=app.preferences.employeeNumber.first()
         provideContent {
             // Observe during Glance's finite composition session: updateAll alone does not restart it.
             val updates = remember {
@@ -72,9 +75,10 @@ class ShiftHudWidget : GlanceAppWidget() {
                 catch(e:kotlinx.coroutines.CancellationException) {throw e}
                 catch(_:Exception) { /* Keep the shift area available; next redraw retries. */ }
             }
+            val employee by app.preferences.employeeNumber.collectAsState(initialEmployee)
             val restoring by app.backups.busy.collectAsState()
             if(restoring)Text("ShiftHUD · Restoring data",style=TextStyle(color=ColorProvider(Color.White)))
-            else WidgetContent(data, context, frozen)
+            else WidgetContent(data, context, frozen,employeeNumberForHost(employee,hostCategory))
         }
     }
     companion object {
@@ -92,7 +96,7 @@ private data class WidgetSource(val schedule:List<com.shifthud.domain.model.Sche
 private fun openApp(context: Context, destination: String): Action = actionStartActivity(widgetDestinationIntent(context, destination))
 
 @Composable
-internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFrozenState) {
+internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFrozenState,employeeNumber:String="") {
     val size = LocalSize.current
     val normal = size.width >= 280.dp && size.height >= 240.dp
     val expanded = size.width >= 320.dp && size.height >= 300.dp
@@ -118,6 +122,9 @@ internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFro
             Text(statusText,modifier=GlanceModifier.semantics { contentDescription=lunch.label },style=TextStyle(color=ColorProvider(Color(lunch.tone.argb)),fontSize=if(normal)14.sp else 12.sp),maxLines=if(normal)2 else 1)
         } else {
             Text(data.headline,modifier=GlanceModifier.fillMaxWidth().clickable(openApp(context,"Dashboard")),style=TextStyle(color=white,fontSize=if(normal)24.sp else 18.sp,fontWeight=FontWeight.Bold),maxLines=2)
+        }
+        if(size.width>=320.dp && size.height>=480.dp && employeeNumber.isNotEmpty()) {
+            Text("EMPLOYEE # $employeeNumber",modifier=GlanceModifier.fillMaxWidth(),style=TextStyle(color=white,fontSize=(if(fontScale>1.3f)14 else 16).sp,fontWeight=FontWeight.Bold),maxLines=2)
         }
         if(roomy) {
             WidgetPaid(data.todayPaid,white,muted)
@@ -146,7 +153,7 @@ internal fun WidgetContent(data: WidgetState, context: Context, frozen:WidgetFro
                 Text("TODAY'S FROZEN TASKS",style=TextStyle(color=muted,fontSize=11.sp,fontWeight=FontWeight.Bold),maxLines=2)
                 Text(frozen.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d",context.resources.configuration.locales[0])),style=TextStyle(color=muted,fontSize=11.sp),maxLines=1)
                 Text(frozen.summary,style=TextStyle(color=white,fontSize=14.sp,fontWeight=FontWeight.Bold),maxLines=2)
-                val visible=checklistCapacity(context,size,data,frozen)
+                val visible=checklistCapacity(context,size,data,frozen,employeeNumber)
                 // Glance RemoteViews columns support at most ten direct children.
                 // Group rows so large checklists are not silently dropped by translation.
                 Column(GlanceModifier.fillMaxWidth()) {
@@ -255,7 +262,7 @@ class ShiftHudWidgetReceiver : GlanceAppWidgetReceiver() {
 
 /** Measure wrapped text using the host density and accessibility font scale. The remaining
  * height belongs to task rows; reserve all existing shift details and fixed controls first. */
-private fun checklistCapacity(context:Context,size:DpSize,data:WidgetState,frozen:WidgetFrozenState):Int {
+private fun checklistCapacity(context:Context,size:DpSize,data:WidgetState,frozen:WidgetFrozenState,employeeNumber:String):Int {
     val metrics=context.resources.displayMetrics
     val scale=context.resources.configuration.fontScale
     val width=((size.width.value-24)*metrics.density).toInt().coerceAtLeast(1)
@@ -279,7 +286,8 @@ private fun checklistCapacity(context:Context,size:DpSize,data:WidgetState,froze
         text(data.scheduledOut,12,2)+text(data.extra,14,2)+
         (data.weekly?.let {8+text("WEEKLY · ${it.paid} / ${it.target}",16,2)+9+text(it.detail,12,2)} ?: 0f)
     val heading=8+text("TODAY'S FROZEN TASKS",11,2)+text(frozen.date.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d",context.resources.configuration.locales[0])),11,1)+text(frozen.summary,14,2)
-    val available=size.height.value-24-header-paid-footer-details-heading-6-text(data.updated+" · ↻",12,1)-8
+    val employeeHeight=if(size.height>=480.dp && employeeNumber.isNotEmpty())text("EMPLOYEE # $employeeNumber",if(scale>1.3f)14 else 16,2) else 0f
+    val available=size.height.value-24-header-paid-footer-details-heading-6-text(data.updated+" · ↻",12,1)-8-employeeHeight
     return visibleWidgetTaskCount(frozen.tasks.map {taskTouchHeight(context,size,it.displayTitle)},available,
         text("+${frozen.tasks.size} more tasks — Open Tasks",12,2))
 }
@@ -293,3 +301,7 @@ private fun taskTouchHeight(context:Context,size:DpSize,title:String):Float {
     val layout=android.text.StaticLayout.Builder.obtain(title,0,title.length,paint,width).setIncludePad(true).build()
     return maxOf(48f,layout.height/metrics.density+12)
 }
+
+internal fun employeeNumberForHost(value:String,category:Int):String =
+    if(category and android.appwidget.AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN != 0 &&
+        category and android.appwidget.AppWidgetProviderInfo.WIDGET_CATEGORY_KEYGUARD == 0) value else ""

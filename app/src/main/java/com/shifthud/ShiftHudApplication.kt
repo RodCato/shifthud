@@ -36,7 +36,7 @@ class ShiftHudApplication : Application() {
     val repository: ShiftRepository by lazy { ShiftRepository(database, engine, onChanged = { widgetRefresh.refresh() }, onHistoricalChanged = { widgetRefresh.redrawHistorical() }, autoLunchSettings = { preferences.autoLunchSettings.first() }, onSessionDeleted = { notifications.forgetSession(it) }, onScheduleChanged = { upcoming.reschedule(debounce = true) }, plannerSettings = { preferences.weeklyPlannerSettings.first() }) }
     val payroll by lazy { com.shifthud.data.repository.PayrollRepository(database) }
     val quickFind by lazy { com.shifthud.data.repository.QuickFindRepository(database, onChanged = { widgetRefresh.refresh() }) }
-    val preferences: ShiftPreferences by lazy { ShiftPreferences(this, onChanged = { widgetRefresh.refresh() }, onPlanningChanged = { week ->
+    val preferences: ShiftPreferences by lazy { ShiftPreferences(this, onEmployeeChanged={widgetRefresh.redrawHistorical()}, onChanged = { widgetRefresh.refresh() }, onPlanningChanged = { week ->
         try { lunchAlerts.refresh() }
         catch(e:kotlinx.coroutines.CancellationException) { throw e }
         catch(e:Exception) { android.util.Log.w("ShiftHUDLunch","Planning reminder refresh deferred",e) }

@@ -134,7 +134,7 @@ class WidgetLayoutDeviceTest {
         val widget=object:GlanceAppWidget() {
             override val sizeMode=SizeMode.Exact
             override suspend fun provideGlance(context:Context,id:GlanceId) {provideContent {
-                WidgetContent(state,context,WidgetFrozenState(LocalDate.now(),floatCount=3))
+                WidgetContent(state,context,WidgetFrozenState(LocalDate.now(),floatCount=3),"0012345")
             }}
         }
         var chosen by mutableStateOf(ShiftHudWidget.COMPACT)
@@ -161,6 +161,10 @@ class WidgetLayoutDeviceTest {
                         assertEquals("$label unclipped at $size",button.height,bounds.height())
                         assertTrue(button.hasOnClickListeners())
                         assertTrue("$label text fits",button.layout.getLineBottom(button.lineCount-1)<=button.height)
+                    }
+                    if(size.height>=480.dp && size.width>=320.dp) {
+                        val employee=texts(root!!).single {it.text.toString()=="EMPLOYEE # 0012345"}
+                        val bounds=android.graphics.Rect();assertTrue(employee.getGlobalVisibleRect(bounds));assertEquals(employee.height,bounds.height())
                     }
                     if(size.width>=320.dp) listOf("−1","+1 FLOAT","OPEN APP","TASKS","QUICK FIND").forEach {label->
                         val control=texts(root!!).single {it.text.toString()==label}
