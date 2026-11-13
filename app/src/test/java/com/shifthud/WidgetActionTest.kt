@@ -19,6 +19,7 @@ import java.time.*
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 class WidgetActionTest {
+    private val databaseName="widget-actions-${java.util.UUID.randomUUID()}.db"
     private lateinit var db: ShiftDatabase
     private lateinit var repo: ShiftRepository
     private lateinit var actions: WidgetActionExecutor
@@ -28,11 +29,11 @@ class WidgetActionTest {
     private var writeRefreshes = 0
     private var actionRefreshes = 0
     @Before fun setup() {
-        db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), ShiftDatabase::class.java).build()
+        db = Room.databaseBuilder(RuntimeEnvironment.getApplication(), ShiftDatabase::class.java,databaseName).build()
         repo = ShiftRepository(db, engine, clock, onChanged = { writeRefreshes++ })
         actions = WidgetActionExecutor(repo, engine) { actionRefreshes++ }
     }
-    @After fun close() { db.close() }
+    @After fun close() { db.close();RuntimeEnvironment.getApplication().deleteDatabase(databaseName) }
     private fun command(op: WidgetOperation, id: Long = 0, date: LocalDate = day) = WidgetCommand(op, id, date)
 
     @Test fun widgetLifecycleUsesRepositoryAndAutomaticallyAssociatesToday() = runBlocking {
@@ -109,5 +110,39 @@ class WidgetActionTest {
         assertFalse(actions.execute(command(WidgetOperation.END_LUNCH, 999)))
         assertNull(repo.snapshot().session)
         assertEquals(1, actionRefreshes)
+    }
+    @Test fun clockOutDuringLunchIsAtomicAndRepeatedCommandsCannotEndANewSession()=runBlocking {
+        actions.execute(command(WidgetOperation.CLOCK_IN))
+        val id=repo.snapshot().session!!.id
+        actions.execute(command(WidgetOperation.START_LUNCH,id))
+        val out=WidgetCommand(WidgetOperation.CLOCK_OUT,id,day,ShiftState.ON_LUNCH)
+        val results=coroutineScope {(1..20).map {async(Dispatchers.IO) {actions.execute(out)}}.awaitAll()}
+        assertEquals(1,results.count {it})
+        val completed=repo.snapshot().session!!
+        assertEquals(ShiftState.COMPLETE,completed.state)
+        assertNotNull(completed.lunchEnd);assertNotNull(completed.clockOut)
+        assertEquals(completed.lunchEnd,completed.clockOut)
+        assertTrue(actions.execute(command(WidgetOperation.CLOCK_IN,id)))
+        assertFalse(actions.execute(command(WidgetOperation.CLOCK_IN,id)))
+        assertFalse(actions.execute(out))
+        assertEquals(ShiftState.WORKING,repo.snapshot().session!!.state)
+    }
+    @Test fun staleWorkingClockOutCannotCloseLunchAndCompletedPunchesSurviveRestart()=runBlocking {
+        actions.execute(command(WidgetOperation.CLOCK_IN))
+        val id=repo.snapshot().session!!.id
+        val out=WidgetCommand(WidgetOperation.CLOCK_OUT,id,day,ShiftState.WORKING)
+        actions.execute(command(WidgetOperation.START_LUNCH,id))
+        assertFalse(actions.execute(out))
+        actions.execute(command(WidgetOperation.END_LUNCH,id))
+        assertTrue(actions.execute(out))
+        val before=repo.snapshot()
+        db.close()
+        db=Room.databaseBuilder(RuntimeEnvironment.getApplication(),ShiftDatabase::class.java,databaseName).build()
+        repo=ShiftRepository(db,engine,clock)
+        actions=WidgetActionExecutor(repo,engine) {actionRefreshes++}
+        assertEquals(before,repo.snapshot())
+        assertFalse(actions.execute(out))
+        assertTrue(actions.execute(command(WidgetOperation.CLOCK_IN,id)))
+        assertNotEquals(id,repo.snapshot().session!!.id)
     }
 }

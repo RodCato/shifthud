@@ -5,11 +5,11 @@ import com.shifthud.domain.pay.workWeekFor
 import java.time.*
 
 /** Pure projection: never writes a workflow, assignment, or task. */
-fun frozenPlanningRows(tasks:List<FrozenTask>,date:LocalDate,today:LocalDate):List<FrozenDailyRow> {
+fun frozenPlanningRows(tasks:List<FrozenTask>,date:LocalDate,today:LocalDate,scheduled:Boolean=false):List<FrozenDailyRow> {
     if(date<=today) return dailyFrozenRows(tasks,date)
     // Do not predict unfinished work from intervening future routines.
     val known=tasks.filter {it.date<=today || it.date==date}
-    val missing=dailyFrozenTemplate(date).filter {candidate->known.none {it.id==candidate.id}}
+    val missing=dailyFrozenTemplate(date,scheduled).filter {candidate->known.none {it.id==candidate.id}}
     return dailyFrozenRows(known+missing,date)
 }
 fun frozenWorkflowFocus(date:LocalDate):String=when(date.dayOfWeek) {
@@ -32,6 +32,6 @@ fun frozenPlanningWeek(tasks:List<FrozenTask>,schedule:List<ScheduledShift>,sele
     return (0L..6L).map {offset->
         val date=start.plusDays(offset)
         FrozenPlanningDay(date,frozenWorkflowFocus(date),dailyFrozenTemplate(date).isNotEmpty(),
-            frozenPlanningRows(tasks,date,today),schedule.filter {it.date==date}.sortedBy {it.start},date>today)
+            frozenPlanningRows(tasks,date,today,schedule.any {it.date==date}),schedule.filter {it.date==date}.sortedBy {it.start},date>today)
     }
 }

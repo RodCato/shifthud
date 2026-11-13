@@ -86,6 +86,8 @@ class BackupRoundTripTest {
     @Test fun schemaSixBackupUpgradesWithoutChangingPayrollOrLunchValues()=runBlocking {
         seed();val old=manager.snapshot()
         old.manifest.put("databaseVersion",6)
+        val legacyLines=old.data.getJSONObject("tables").getJSONArray("payroll_lines")
+        for(i in 0 until legacyLines.length()) { legacyLines.getJSONObject(i).remove("taxable");legacyLines.getJSONObject(i).remove("includedInGross");legacyLines.getJSONObject(i).remove("category") }
         val row=old.data.getJSONObject("tables").getJSONArray("scheduled_shifts").getJSONObject(0)
         row.remove("employerNetMinutes");row.remove("employerLunchMinutes");row.remove("usesGlobalLunch");row.remove("lunchPlanApplied")
         val decoded=BackupSnapshot.decode(old.bytes())
@@ -98,12 +100,14 @@ class BackupRoundTripTest {
     @Test fun schemaSevenBackupUpgradesAndMissingWeeklyPreferencesInheritDefault()=runBlocking {
         seed();val old=manager.snapshot()
         old.manifest.put("databaseVersion",7)
+        val legacyLines=old.data.getJSONObject("tables").getJSONArray("payroll_lines")
+        for(i in 0 until legacyLines.length()) { legacyLines.getJSONObject(i).remove("taxable");legacyLines.getJSONObject(i).remove("includedInGross");legacyLines.getJSONObject(i).remove("category") }
         val rows=old.data.getJSONObject("tables").getJSONArray("scheduled_shifts")
         for(i in 0 until rows.length()) { rows.getJSONObject(i).remove("employerNetMinutes");rows.getJSONObject(i).remove("employerLunchMinutes") }
         old.data.getJSONObject("preferences").getJSONObject("shift").remove("weekly_lunch_plans")
         old.manifest.getJSONObject("preferenceCounts").put("shift",old.data.getJSONObject("preferences").getJSONObject("shift").length())
         val decoded=BackupSnapshot.decode(old.bytes());manager.validate(decoded)
-        assertEquals(8,decoded.manifest.getInt("databaseVersion"))
+        assertEquals(9,decoded.manifest.getInt("databaseVersion"))
         assertTrue(decoded.data.getJSONObject("tables").getJSONArray("scheduled_shifts").getJSONObject(0).isNull("employerNetMinutes"))
     }
     @Test fun emptyBackupIsValidAndPreviewWritesNothing()=runBlocking {

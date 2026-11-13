@@ -52,12 +52,17 @@ fun earningsDeductions(p: Paycheck): EarningsDeductions {
     val other = if (complete) sum(DeductionCategory.OTHER) else null
     if (!complete) tax = null
     val components = (if (duplicateLines) emptyList() else taxRows).filter { it.cents != null }.groupBy { it.label }.mapValues { (_, rows) -> rows.fold(BigDecimal.ZERO) { total, row -> total + row.cents.decimal()!! } }
-    if (tax != null && other != null && p.grossCents != null && p.netCents != null &&
-        p.grossCents.decimal()!! - tax - other != p.netCents.decimal()) warnings += "Gross minus taxes and deductions does not equal net"
+    cashReconciliationWarning(p)?.let { warnings += it }
     return EarningsDeductions(tax, other, components, warnings)
 }
 data class EarningsTotals(val checks: List<Paycheck>) {
     val gross = amount(checks) { it.grossCents.decimal() }
+    val cash = amount(checks) { cashWages(it).decimal() }
+    val noncash = amount(checks) { noncashCents(it).decimal() }
+    val taxableNoncash = amount(checks) { p ->
+        if(p.lines.any { it.kind == PayrollKind.NONCASH && it.taxable == null }) null
+        else noncashCents(p) { it.taxable == true }.decimal()
+    }
     val net = amount(checks) { it.netCents.decimal() }
     val taxes = amount(checks) { earningsDeductions(it).taxes }
     val other = amount(checks) { earningsDeductions(it).other }

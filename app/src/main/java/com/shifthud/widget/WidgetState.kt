@@ -9,8 +9,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 enum class WidgetStatus { OFF_TODAY, TODAY, WORKING, ON_LUNCH, COMPLETE }
-enum class WidgetOperation { CLOCK_IN, START_LUNCH, END_LUNCH, REFRESH }
-data class WidgetCommand(val operation: WidgetOperation, val sessionId: Long, val date: LocalDate)
+enum class WidgetOperation { CLOCK_IN, START_LUNCH, END_LUNCH, CLOCK_OUT, REFRESH }
+data class WidgetCommand(val operation: WidgetOperation, val sessionId: Long, val date: LocalDate, val expectedState:ShiftState?=null)
 data class WidgetState(
     val status: WidgetStatus,
     val headline: String,
@@ -25,6 +25,7 @@ data class WidgetState(
     val lunchMetric: WidgetLunch? = null,
     val todayPaid: String? = null,
     val weekly: WidgetWeekly? = null,
+    val clockOutCommand: WidgetCommand? = null,
 )
 
 /** Pure presentation derived from the same engine as the Dashboard, never a second session store. */
@@ -43,7 +44,7 @@ class WidgetStateFactory(private val engine: ShiftEngine) {
         if (session == null) {
             if (scheduled == null) return WidgetState(WidgetStatus.OFF_TODAY,
                 if (next == null) "NO UPCOMING SHIFT" else "OFF TODAY", nextLabel() ?: "Add your schedule in ShiftHUD",
-                actionLabel = if (next == null) "ADD SHIFT" else "OPEN SCHEDULE", destination = "Schedule", updated = updated)
+                actionLabel = "CLOCK IN", command=WidgetCommand(WidgetOperation.CLOCK_IN,latest?.id ?: 0,today), updated = updated)
             val until = Duration.between(now, scheduled.start.atZone(zone).toInstant())
             return WidgetState(WidgetStatus.TODAY, "TODAY · ${range(scheduled)}",
                 if (until.isNegative || until.isZero) "Scheduled start reached" else "Starts in ${until.widgetDuration()}",
@@ -57,11 +58,13 @@ class WidgetStateFactory(private val engine: ShiftEngine) {
             ShiftState.WORKING -> WidgetState(WidgetStatus.WORKING, "WORKING · ${durations.activeWork.widgetDuration()}",
                 lunch?.detail ?: if (durations.lunchRemaining.isNegative || durations.lunchRemaining.isZero) "Lunch threshold reached" else "Lunch due in ${durations.lunchRemaining.widgetDuration()}",
                 out, null,
-                if (session.lunchStart == null) "START LUNCH" else "OPEN APP", if (session.lunchStart == null) WidgetCommand(WidgetOperation.START_LUNCH, session.id, today) else null, updated = updated, completedLunch = lunch)
+                if (session.lunchStart == null) "START LUNCH" else "CLOCK OUT", if (session.lunchStart == null) WidgetCommand(WidgetOperation.START_LUNCH, session.id, today) else WidgetCommand(WidgetOperation.CLOCK_OUT,session.id,today,ShiftState.WORKING), updated = updated, completedLunch = lunch,
+                clockOutCommand=if(session.lunchStart==null) WidgetCommand(WidgetOperation.CLOCK_OUT,session.id,today,ShiftState.WORKING) else null)
             ShiftState.ON_LUNCH -> WidgetState(WidgetStatus.ON_LUNCH, "ON LUNCH · ${durations.lunch.widgetDuration()}",
-                "Paid · ${durations.paid.widgetDuration()}", out, actionLabel = "END LUNCH", command = WidgetCommand(WidgetOperation.END_LUNCH, session.id, today), updated = updated)
+                "Paid · ${durations.paid.widgetDuration()}", out, actionLabel = "END LUNCH", command = WidgetCommand(WidgetOperation.END_LUNCH, session.id, today), updated = updated,
+                clockOutCommand=WidgetCommand(WidgetOperation.CLOCK_OUT,session.id,today,ShiftState.ON_LUNCH))
             ShiftState.COMPLETE -> WidgetState(WidgetStatus.COMPLETE, "SHIFT COMPLETE", "Paid · ${durations.paid.widgetDuration()}",
-                "Store · ${durations.store.widgetDuration()}", nextLabel(), "OPEN APP", updated = updated)
+                "Store · ${durations.store.widgetDuration()}", nextLabel(), "CLOCK IN NEW SESSION", command=WidgetCommand(WidgetOperation.CLOCK_IN,session.id,today), updated = updated)
             ShiftState.NOT_STARTED -> error("NOT_STARTED has no persisted session")
         }
     }

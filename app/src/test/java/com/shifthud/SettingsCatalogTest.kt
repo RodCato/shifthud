@@ -9,9 +9,10 @@ class SettingsCatalogTest {
     @Test fun everyExistingControlGroupHasOneHome() {
         val entries=SETTINGS_CATEGORIES.flatMap{it.entries}.map{it.id}
         assertEquals(entries.size,entries.distinct().size)
-        assertEquals(setOf("decimal","threshold","auto","weekly","planner","lunchAlerts","upcoming","tests","end","warnings","snooze","channel","rates","paychecks","quick","backup","history","about"),entries.toSet())
+        assertEquals(setOf("employee","decimal","threshold","auto","weekly","planner","lunchAlerts","upcoming","tests","end","warnings","snooze","channel","rates","paycheckReminder","paychecks","quick","backup","history","about"),entries.toSet())
     }
     @Test fun searchesLabelsAndRelatedWordsCaseInsensitively() {
+        assertTrue("employee" in ids("employee number"))
         assertTrue("auto" in ids("AUTO lunch"));assertTrue("backup" in ids("restore"))
         assertTrue("tests" in ids("Garmin test"));assertTrue("channel" in ids("custom sound"))
         assertTrue("weekly" in ids("weekly sound"));assertTrue("history" in ids("backfill"))
@@ -19,7 +20,7 @@ class SettingsCatalogTest {
         assertTrue("paychecks" in ids("screenshot"));assertTrue(ids("nonexistent controls").isEmpty())
     }
     @Test fun blankSearchIncludesAllAndCategoriesMatch() {
-        assertEquals(18,ids("   ").size)
+        assertEquals(20,ids("   ").size)
         assertTrue(ids("data management").containsAll(listOf("backup","history")))
         assertEquals(8,SETTINGS_CATEGORIES.size)
     }

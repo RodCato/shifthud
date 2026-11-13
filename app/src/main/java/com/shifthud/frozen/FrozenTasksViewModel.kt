@@ -28,6 +28,13 @@ class FrozenTasksViewModel(private val store:FrozenTaskStore, private val automa
         catch(e:CancellationException) { throw e }
         catch(e:Exception) { _error.value="Frozen Tasks could not load. Your saved data has not been replaced. ${e.message}" }
     } }
+    val floats=store.floats.catch {_error.value="Float counts could not load. Saved counts are preserved."}
+        .map {it as FloatCounts?}.stateIn(viewModelScope,SharingStarted.Eagerly,null)
+    // Do not use the task editor's busy gate: every rapid counter tap must be queued.
+    fun adjustFloat(delta:Int) {viewModelScope.launch(start=CoroutineStart.UNDISPATCHED) {
+        try {withContext(NonCancellable) {store.adjustFloat(delta)}}
+        catch(e:Exception) {_error.value=e.message ?: "Float count was not saved."}
+    }}
     val dailyDates=store.dailyDates.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
     suspend fun openDaily(date:java.time.LocalDate) {
         try { store.openDaily(date) }

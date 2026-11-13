@@ -7,6 +7,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -72,18 +74,44 @@ import java.time.format.FormatStyle
                     Text("39.15 hours = 39h 9m, not 39h 15m.",style=MaterialTheme.typography.bodySmall)
                     runCatching{parsePayrollHours(draft.hours)?.let(::employerHoursLabel)}.getOrNull()?.let{Text("Equivalent: $it",style=MaterialTheme.typography.bodySmall)}
                 }
-                item { NumericField("Actual gross pay ($)",draft.gross,!busy){draft=draft.copy(gross=it)} }
-                item { NumericField("Actual net pay ($)",draft.net,!busy){draft=draft.copy(net=it);calculatedNetAccepted=false} }
+                item { NumericField("Total gross compensation ($)",draft.gross,!busy){draft=draft.copy(gross=it)} }
+                item { NumericField("Net cash paycheck ($)",draft.net,!busy){draft=draft.copy(net=it);calculatedNetAccepted=false} }
                 item { Text("Deductions and earnings",style=MaterialTheme.typography.titleMedium);Text("Deductions reduce gross; negative amounts represent refunds. Earnings/adjustments are optional details already included in actual gross and are never added twice.",style=MaterialTheme.typography.bodySmall) }
                 items(draft.lines,key={"line${it.id}"}) { line ->
                     OutlinedCard { Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(line.label,{text->draft=draft.copy(lines=draft.lines.map{if(it.id==line.id)it.copy(label=text) else it})},label={Text(if(line.kind==PayrollKind.DEDUCTION)"Deduction category" else "Earnings / adjustment category")},enabled=!busy,modifier=Modifier.fillMaxWidth())
                         NumericField("${line.label} ($)",line.amount,!busy){text->draft=draft.copy(lines=draft.lines.map{if(it.id==line.id)it.copy(amount=text) else it})}
+                        if(line.kind==PayrollKind.NONCASH) {
+                            Text("Noncash compensation · not a bank deposit",style=MaterialTheme.typography.labelLarge)
+                            OutlinedTextField(line.category,{text->draft=draft.copy(lines=draft.lines.map{if(it.id==line.id)it.copy(category=text) else it})},label={Text("Compensation category (optional)")},enabled=!busy,modifier=Modifier.fillMaxWidth())
+                            FlowRow {
+                                listOf(null to "Tax status unknown",true to "Taxable",false to "Nontaxable").forEach { (value,label) ->
+                                    FilterChip(selected=line.taxable==value,enabled=!busy,onClick={draft=draft.copy(lines=draft.lines.map{if(it.id==line.id)it.copy(taxable=value) else it})},label={Text(label)})
+                                }
+                            }
+                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Checkbox(line.includedInGross,{value->draft=draft.copy(lines=draft.lines.map{if(it.id==line.id)it.copy(includedInGross=value) else it})},enabled=!busy,modifier=Modifier.semantics { contentDescription="Already included in reported gross" })
+                                Text("Already included in reported gross")
+                            }
+                            Text("Use the paystub classification. Only amounts included in gross reduce calculated cash net.",style=MaterialTheme.typography.bodySmall)
+                        }
+                        if(line.kind!=PayrollKind.DEDUCTION) TextButton(enabled=!busy,onClick={draft=draft.copy(lines=draft.lines.map{if(it.id==line.id)it.copy(kind=if(it.kind==PayrollKind.NONCASH)PayrollKind.EARNING else PayrollKind.NONCASH,taxable=null,includedInGross=false,category="") else it})}) {
+                            Text(if(line.kind==PayrollKind.NONCASH)"CHANGE TO CASH EARNINGS DETAIL" else "CLASSIFY AS NONCASH")
+                        }
                         TextButton(enabled=!busy,onClick={draft=draft.copy(lines=draft.lines.filterNot{it.id==line.id},complete=if(line.kind==PayrollKind.DEDUCTION)false else draft.complete)}){Text("REMOVE CATEGORY")}
                     } }
                 }
                 item { OutlinedButton(enabled=!busy,onClick={draft=draft.copy(lines=draft.lines+LineDraft(draft.nextId,PayrollKind.DEDUCTION,"Additional deduction",""),nextId=draft.nextId-1,complete=false)}){Text("ADD DEDUCTION")} }
                 item { OutlinedButton(enabled=!busy,onClick={draft=draft.copy(lines=draft.lines+LineDraft(draft.nextId,PayrollKind.EARNING,"Other earnings / adjustments",""),nextId=draft.nextId-1)}){Text("ADD EARNINGS / ADJUSTMENT")} }
+                item { OutlinedButton(enabled=!busy,onClick={draft=draft.copy(lines=draft.lines+LineDraft(draft.nextId,PayrollKind.NONCASH,"Noncash compensation",""),nextId=draft.nextId-1)}){Text("ADD NONCASH COMPENSATION")} }
+                item {
+                    val model=runCatching{draft.model()}.getOrNull()
+                    model?.let {
+                        Text("Cash wages: ${cashWages(it)?.let { value -> "$${centsInput(value)}" } ?: "Unknown"}")
+                        Text("Calculated cash net: ${calculatedCashNet(it)?.let { value -> "$${centsInput(value)}" } ?: "Incomplete — confirm deductions and amounts"}")
+                        cashReconciliationWarning(it)?.let { warning -> Text(warning,color=MaterialTheme.colorScheme.error) }
+                    }
+                }
                 item {
                     Row { Checkbox(draft.complete,{draft=draft.copy(complete=it)},enabled=!busy);Text("All deductions are accounted for") }
                     Text("Fill each deduction amount (including 0), or remove categories that do not apply. Checking this with no deduction categories confirms $0 total. Blank deduction amounts keep the record incomplete.",style=MaterialTheme.typography.bodySmall)
