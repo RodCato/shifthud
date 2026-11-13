@@ -14,15 +14,16 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-@Composable internal fun FrozenDayNavigation(date:LocalDate,today:LocalDate,change:(LocalDate)->Unit,week:()->Unit) {
+@Composable internal fun FrozenDayNavigation(date:LocalDate,today:LocalDate,change:(LocalDate)->Unit,week:()->Unit,nextShift:LocalDate?=null) {
     Column(Modifier.fillMaxWidth().padding(horizontal=12.dp)) {
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
             TextButton(onClick={change(date.minusDays(1))},modifier=Modifier.width(48.dp).semantics {contentDescription="Previous day"}) {Text("‹")}
             Text(date.format(DateTimeFormatter.ofPattern("EEEE, MMM d, uuuu",Locale.getDefault())),Modifier.weight(1f),style=MaterialTheme.typography.titleSmall)
             TextButton(onClick={change(date.plusDays(1))},modifier=Modifier.width(48.dp).semantics {contentDescription="Next day"}) {Text("›")}
         }
-        Row {
+        FlowRow {
             if(date!=today) TextButton(onClick={change(today)}) {Text("Today")}
+            if(nextShift!=null && date!=nextShift) TextButton(onClick={change(nextShift)}) {Text("Next Shift")}
             TextButton(onClick=week) {Text("Week View")}
         }
     }

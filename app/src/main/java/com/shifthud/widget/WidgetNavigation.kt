@@ -19,4 +19,5 @@ fun androidx.navigation.NavHostController.openWidgetDestination(destination:Stri
     if(destination !in setOf("Dashboard","Schedule","Settings",QUICK_FIND_DESTINATION,TASKS_DESTINATION))return
     if(destination==TASKS_DESTINATION) popBackStack(graph.startDestinationId,false)
     navigate(destination) {popUpTo(graph.startDestinationId);launchSingleTop=true}
+    if(destination==TASKS_DESTINATION) currentBackStackEntry?.savedStateHandle?.set("tasksOpenToday",true)
 }

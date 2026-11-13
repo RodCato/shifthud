@@ -15,24 +15,33 @@ import kotlinx.coroutines.delay
 import java.time.LocalDate
 
 @Composable fun FrozenDailyScreen(vm:FrozenTasksViewModel,openCountRoute:()->Unit,openManual:()->Unit,
-    currentDate:()->LocalDate={LocalDate.now()},schedule:List<ScheduledShift> = emptyList(),scheduleLoaded:Boolean=true) {
+    currentDate:()->LocalDate={LocalDate.now()},schedule:List<ScheduledShift> = emptyList(),scheduleLoaded:Boolean=true,startToday:Boolean=false) {
     val floats by vm.floats.collectAsStateWithLifecycle()
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val trucks by vm.truckWorkflows.collectAsStateWithLifecycle()
     var today by remember { mutableStateOf(currentDate()) }
-    // Fresh tab visits start today. Browsing is local to this visit.
+    // Resolve once per tab visit after Room has loaded. Live schedule changes never move the selection.
     var browsing by remember { mutableStateOf<String?>(null) }
+    var manual by remember { mutableStateOf(false) }
+    LaunchedEffect(scheduleLoaded,schedule) {
+        if(scheduleLoaded && browsing==null) browsing=(if(startToday) today else initialFrozenWorkday(today,schedule)).toString()
+    }
     var weekView by remember { mutableStateOf(false) }
     var choosing by rememberSaveable { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
     var tools by rememberSaveable { mutableStateOf(false) }
     val owner=LocalLifecycleOwner.current
     LaunchedEffect(owner) { owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-        while(true) { val date=currentDate();if(date!=today) {today=date;browsing=null;weekView=false};delay(1000) }
+        while(true) { val date=currentDate();if(date!=today) {
+            if(!manual && browsing==today.toString()) browsing=date.toString()
+            today=date
+        };delay(1000) }
     } }
-    val date=browsing?.let(LocalDate::parse) ?: today
+    if(browsing==null) { Text("Loading schedule…");return }
+    val date=LocalDate.parse(browsing)
+    fun browse(value:LocalDate) {manual=true;browsing=value.toString();weekView=false}
     val preview=date>today
     var loaded by remember { mutableStateOf<LocalDate?>(null) }
     LaunchedEffect(date,today,weekView,schedule) {
@@ -47,14 +56,14 @@ import java.time.LocalDate
         androidx.activity.compose.BackHandler { importing=false }
         EndcapImportScreen(vm,date) {importing=false}
     } else Column(Modifier.fillMaxSize()) {
-        FrozenDayNavigation(date,today,{browsing=it.takeUnless {it==today}?.toString();weekView=false},{weekView=true})
+        FrozenDayNavigation(date,today,::browse,{weekView=true},nextFrozenWorkday(today,schedule))
         Box(Modifier.weight(1f)) {
             if(weekView) {
                 androidx.activity.compose.BackHandler {weekView=false}
                 if(tasks==null) Text(error ?: "Loading tasks…")
                 else FrozenWeekView(frozenPlanningWeek(tasks.orEmpty(),schedule,date,today),scheduleLoaded,
-                    {browsing=it.takeUnless {it==today}?.toString();weekView=false},
-                    {browsing=date.minusWeeks(1).toString()},{browsing=date.plusWeeks(1).toString()},{weekView=false})
+                    ::browse,
+                    {manual=true;browsing=date.minusWeeks(1).toString()},{manual=true;browsing=date.plusWeeks(1).toString()},{weekView=false})
             } else if(preview) {
                 if(rows==null) Text(error ?: "Loading preview…")
                 else FrozenFuturePreview(rows,date,dailyFrozenTemplate(date).isNotEmpty())
@@ -78,5 +87,5 @@ import java.time.LocalDate
                 truck=truck,truckArrival={vm.truckArrival(date,it)})
         }
     }
-    if(choosing) ScheduleDatePicker(date,{choosing=false}) {browsing=it.toString();weekView=false;choosing=false}
+    if(choosing) ScheduleDatePicker(date,{choosing=false}) {browse(it);choosing=false}
 }

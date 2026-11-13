@@ -114,12 +114,13 @@ class MainActivity : ComponentActivity() {
                 }) { padding ->
                     NavHost(nav, startDestination = "Dashboard", modifier = Modifier.padding(padding)) {
                         composable("Dashboard") { DashboardScreen(data, vm, busy, openFrozenTasks={nav.selectTab("Tasks")}, openSchedule={nav.selectTab("Schedule")}, openAnalytics={ nav.navigate("Analytics") { launchSingleTop = true } },openPaychecks={ nav.navigate("Paychecks/${com.shifthud.domain.pay.workWeekFor(java.time.LocalDate.now()).start}") }) }
-                        composable("Tasks") {
+                        composable("Tasks") { taskEntry ->
+                            val startToday=remember(taskEntry) {taskEntry.savedStateHandle.remove<Boolean>("tasksOpenToday") ?: false}
                             val frozen: com.shifthud.frozen.FrozenTasksViewModel = viewModel(factory=object:ViewModelProvider.Factory {
                                 @Suppress("UNCHECKED_CAST")
                                 override fun <T:ViewModel> create(modelClass:Class<T>):T = com.shifthud.frozen.FrozenTasksViewModel((application as ShiftHudApplication).frozenTasks,automatic=true) as T
                             })
-                            com.shifthud.frozen.FrozenDailyScreen(frozen,openCountRoute={nav.navigate("FrozenCountRoute")},openManual={nav.navigate("FrozenTasks")},schedule=data.schedule,scheduleLoaded=data.loaded)
+                            com.shifthud.frozen.FrozenDailyScreen(frozen,openCountRoute={nav.navigate("FrozenCountRoute")},openManual={nav.navigate("FrozenTasks")},schedule=data.schedule,scheduleLoaded=data.loaded,startToday=startToday)
                         }
                         composable("FrozenTasks") {
                             val frozen: com.shifthud.frozen.FrozenTasksViewModel = viewModel(factory=object:ViewModelProvider.Factory {

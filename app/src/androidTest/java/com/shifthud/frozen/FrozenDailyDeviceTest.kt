@@ -35,6 +35,48 @@ class FrozenDailyDeviceTest {
         val image=InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         try {File(context.cacheDir,"daily-$name.png").outputStream().use {image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}} finally {image.recycle()}
     }
+    @Test fun smartEntryWaitsForScheduleAndPreservesManualBrowsing()=runBlocking {
+        val today=LocalDate.of(2026,11,12)
+        val friday=today.plusDays(1)
+        val sunday=today.plusDays(3)
+        fun shift(date:LocalDate)=com.shifthud.domain.model.ScheduledShift(date=date,scheduledStart=java.time.LocalTime.of(8,0),scheduledEnd=java.time.LocalTime.of(17,0))
+        val schedule=mutableStateOf(emptyList<com.shifthud.domain.model.ScheduledShift>())
+        val ready=mutableStateOf(false)
+        val visit=mutableIntStateOf(0)
+        val vm=FrozenTasksViewModel(store,automatic=true).also{models.put("smart",it)}
+        val before=store.tasks.first()
+        ui.setContent {ShiftHudTheme {Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {
+            key(visit.intValue) {FrozenDailyScreen(vm,{}, {},currentDate={today},schedule=schedule.value,scheduleLoaded=ready.value)}
+        }}}
+        ui.onNodeWithText("Loading schedule…").assertExists()
+        assertEquals(before,store.tasks.first());assertTrue(store.dailyDates.first().isEmpty())
+        ui.runOnIdle {schedule.value=listOf(shift(friday));ready.value=true}
+        ui.onNodeWithText("Friday, Nov 13, 2026").assertIsDisplayed()
+        ui.onNodeWithText("Read-only preview · carryovers are projected").assertIsDisplayed()
+        assertEquals(before,store.tasks.first());assertTrue(store.dailyDates.first().isEmpty())
+        ui.runOnIdle {schedule.value=listOf(shift(sunday))}
+        ui.onNodeWithText("Friday, Nov 13, 2026").assertIsDisplayed()
+        ui.onNodeWithContentDescription("Previous day").performClick()
+        ui.onNodeWithText("Thursday, Nov 12, 2026").assertIsDisplayed()
+        ui.onNodeWithContentDescription("Previous day").performClick()
+        ui.onNodeWithText("Wednesday, Nov 11, 2026").assertIsDisplayed()
+        ui.onNodeWithText("Today").performClick()
+        ui.onNodeWithText("Thursday, Nov 12, 2026").assertIsDisplayed()
+        ui.onNodeWithText("Next Shift").performClick()
+        ui.onNodeWithText("Sunday, Nov 15, 2026").assertIsDisplayed()
+        val persisted=store.tasks.first()
+        ui.runOnIdle {schedule.value=listOf(shift(friday));visit.intValue++}
+        ui.onNodeWithText("Friday, Nov 13, 2026").assertIsDisplayed()
+        assertEquals(persisted,store.tasks.first())
+        assertFalse(friday in store.dailyDates.first());assertFalse(sunday in store.dailyDates.first())
+    }
+    @Test fun widgetEntryStillOpensTodayOnDayOff() {
+        val today=LocalDate.of(2026,11,12)
+        val vm=FrozenTasksViewModel(store,automatic=true).also{models.put("widgetToday",it)}
+        ui.setContent {ShiftHudTheme {FrozenDailyScreen(vm,{}, {},currentDate={today},schedule=listOf(com.shifthud.domain.model.ScheduledShift(date=today.plusDays(1),scheduledStart=java.time.LocalTime.NOON,scheduledEnd=java.time.LocalTime.of(20,0))),startToday=true)}}
+        ui.onNodeWithText("Thursday, Nov 12, 2026").assertIsDisplayed()
+        ui.onNodeWithText("Read-only preview · carryovers are projected").assertDoesNotExist()
+    }
     @Test fun todayLoadsWithoutStartAndCheckboxPersists() {
         val today=LocalDate.of(2026,11,2)
         val vm=FrozenTasksViewModel(store,automatic=true).also{models.put("daily",it)}
