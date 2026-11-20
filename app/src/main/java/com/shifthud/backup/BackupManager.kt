@@ -52,7 +52,7 @@ class BackupManager(private val app:ShiftHudApplication,private val fault:(Strin
         val tables=captureDatabase(db)
         val prefs=preferences.snapshot(runtime)
         val counts=JSONObject().apply{BACKUP_TABLES.forEach{put(it,tables.getJSONArray(it).length())}}
-        val manifest=JSONObject().put("format",1).put("payloadVersion",1).put("databaseVersion",9)
+        val manifest=JSONObject().put("format",1).put("payloadVersion",2).put("databaseVersion",9)
             .put("appVersion",app.packageManager.getPackageInfo(app.packageName,0).versionName?:"unknown")
             .put("preferenceCounts",JSONObject().apply{prefs.namesSet().forEach{put(it,prefs.getJSONObject(it).length())}})
             .put("soundReferences",org.json.JSONArray().apply{
@@ -77,11 +77,12 @@ class BackupManager(private val app:ShiftHudApplication,private val fault:(Strin
     }
     suspend fun validate(snapshot:BackupSnapshot,runtime:Boolean=false)=withContext(Dispatchers.IO) {
         require(snapshot.bytes().size<=BackupCrypto.MAX_BYTES){"Dataset exceeds the supported recovery size; no records were changed."}
-        require(snapshot.manifest.getInt("format")==1 && snapshot.manifest.getInt("payloadVersion")==1 && snapshot.manifest.getInt("databaseVersion")==9)
+        require(snapshot.manifest.getInt("format")==1 && snapshot.manifest.getInt("payloadVersion")==2 && snapshot.manifest.getInt("databaseVersion")==9)
         require(snapshot.data.namesSet()==setOf("tables","preferences","sequences"))
         BackupPreferences.validate(snapshot.data.getJSONObject("preferences"),runtime)
+        preferences.validateStores(snapshot.data.getJSONObject("preferences"))
         val preferenceCounts=snapshot.manifest.getJSONObject("preferenceCounts")
-        require(preferenceCounts.namesSet()==setOf("shift","rates","upcoming"))
+        require(preferenceCounts.namesSet()==PREFERENCE_GROUPS)
         preferenceCounts.namesSet().forEach{require(preferenceCounts.getInt(it)==snapshot.data.getJSONObject("preferences").getJSONObject(it).length()){"Preference count mismatch."}}
         require(snapshot.manifest.getJSONObject("counts").namesSet()==BACKUP_TABLES.toSet())
         snapshot.counts.forEach{(key,n)->require(snapshot.manifest.getJSONObject("counts").getInt(key)==n){"Record count mismatch."}}
@@ -95,7 +96,8 @@ class BackupManager(private val app:ShiftHudApplication,private val fault:(Strin
     private suspend fun apply(snapshot:BackupSnapshot,inject:Boolean=false) {
         replaceDatabase(db,snapshot.data.getJSONObject("tables"),snapshot.data.getJSONObject("sequences"))
         if(inject)fault("database")
-        preferences.replace(snapshot.data.getJSONObject("preferences"))
+        preferences.replace(snapshot.data.getJSONObject("preferences")) { if(inject)fault("store:$it") }
+        app.lunchAlerts.reloadRestoredSettings()
         if(inject)fault("preferences")
         db.invalidationTracker.refreshVersionsAsync()
     }
@@ -121,7 +123,8 @@ class BackupManager(private val app:ShiftHudApplication,private val fault:(Strin
     private suspend fun verify(expected:BackupSnapshot,runtime:Boolean) {
         val actual=snapshot(runtime)
         // JSONObject key order is not a data property.
-        check(canonical(actual.data)==canonical(expected.data)){"Restore verification failed."}
+        val report=compareBackupState(expected,actual)
+        check(report.passed){"Restore verification failed: "+report.details.filter{it.startsWith("FAIL")}.joinToString()}
     }
     suspend fun restore(snapshot:BackupSnapshot)=withContext(Dispatchers.IO+NonCancellable) {
         busy.value=true
@@ -165,9 +168,11 @@ class BackupManager(private val app:ShiftHudApplication,private val fault:(Strin
                 app.getSystemService(android.app.NotificationManager::class.java).cancelAll()
                 check(app.widgetRefresh.refresh(mayStartService=false))
                 app.upcoming.reschedule()
+                app.paycheckReminders.reschedule()
+                app.lunchAlerts.refresh()
             }.isSuccess
-            if(refreshed)"Restore completed and verified. Review Android notification settings and widget placement."
-            else "Restore completed and verified. Runtime refresh is pending; reopen ShiftHUD to rebuild widgets and reminders."
+            if(refreshed)"PASS — Restore completed and verified across all supported stores. ${snapshot.counts.values.sum()} database records; ${snapshot.workflowCounts().entries.joinToString { "${it.value} ${it.key}" }}. Review Android notification settings and widget placement."
+            else "PASS — Restore completed and verified. Runtime refresh is pending; reopen ShiftHUD to rebuild widgets and reminders."
         }finally{busy.value=false}
     }
     /** Room may use NORMAL WAL sync: flush it before the cross-store commit marker is durable. */

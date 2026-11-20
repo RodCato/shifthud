@@ -14,7 +14,7 @@ import java.util.UUID
 private val Context.frozenTaskStore by preferencesDataStore(name="frozen_tasks")
 
 /** Separate, atomic preferences; malformed data is surfaced, never reset to a template. */
-class FrozenTaskStore(private val store: DataStore<Preferences>, private val clock: Clock = Clock.systemUTC(),
+class FrozenTaskStore(internal val store: DataStore<Preferences>, private val clock: Clock = Clock.systemUTC(),
     private val zone:()->ZoneId = {ZoneId.systemDefault()},private val onChanged:suspend ()->Unit = {},private val scheduledDates:suspend ()->Set<LocalDate> = {emptySet()}) {
     constructor(context: Context,onChanged:suspend ()->Unit = {},scheduledDates:suspend ()->Set<LocalDate> = {emptySet()}): this(context.applicationContext.frozenTaskStore,onChanged=onChanged,scheduledDates=scheduledDates)
     private val floatKey=stringPreferencesKey("daily_float_counts_v1")

@@ -15,6 +15,12 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
+    // Explicitly isolated package for destructive migration acceptance tests only.
+    buildTypes.getByName("debug") {
+        if (providers.gradleProperty("migrationAudit").orNull == "true") applicationIdSuffix = ".migrationaudit"
+    }
+    sourceSets.getByName("test").java.srcDir("src/testSupport/java")
+    sourceSets.getByName("androidTest").java.srcDir("src/testSupport/java")
     buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

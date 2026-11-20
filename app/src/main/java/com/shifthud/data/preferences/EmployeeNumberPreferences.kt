@@ -9,9 +9,9 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.map
 
-// Local-only settings, deliberately outside exportable payroll/planner preferences.
+// Local settings; included only in the user-requested encrypted migration backup.
 private val Context.employeeNumberStore by preferencesDataStore(name="employee_number")
-class EmployeeNumberPreferences(private val store:DataStore<Preferences>,private val redraw:suspend ()->Unit={}) {
+class EmployeeNumberPreferences(internal val store:DataStore<Preferences>,private val redraw:suspend ()->Unit={}) {
     constructor(context:Context,redraw:suspend ()->Unit={}):this(context.applicationContext.employeeNumberStore,redraw)
     private val key=stringPreferencesKey("employee_number")
     val value=store.data.map {it[key].orEmpty()}

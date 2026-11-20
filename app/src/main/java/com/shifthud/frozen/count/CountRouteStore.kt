@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import com.shifthud.backup.guardedEdit
 import kotlinx.coroutines.flow.map
 import java.time.Clock
 import java.util.UUID
@@ -11,12 +12,12 @@ import java.util.UUID
 private val Context.countRoutePreferences by preferencesDataStore(name="frozen_count_route")
 
 /** Isolated from Frozen task, punch and payroll storage. Every action uses an optimistic revision. */
-class CountRouteStore(private val preferences:DataStore<Preferences>,private val clock:Clock=Clock.systemUTC()) {
+class CountRouteStore(internal val preferences:DataStore<Preferences>,private val clock:Clock=Clock.systemUTC()) {
     constructor(context:Context):this(context.applicationContext.countRoutePreferences)
     private val key=stringPreferencesKey("count_route_v1")
     val data=preferences.data.map { decodeCountRoute(it[key]) }
     private suspend fun change(revision:Long,update:(CountRouteData)->CountRouteData) {
-        preferences.edit { values->
+        preferences.guardedEdit { values->
             val old=decodeCountRoute(values[key])
             if(old.revision==revision)values[key]=encodeCountRoute(update(old).copy(revision=old.revision+1))
         }

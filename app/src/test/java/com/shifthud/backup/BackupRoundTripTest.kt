@@ -28,6 +28,7 @@ class BackupRoundTripTest {
     @Before fun unblock(){DataGate.blocked=false}
     @After fun cleanup(){DataGate.blocked=false;File(app.noBackupFilesDir,"restore").deleteRecursively()}
     private suspend fun seed() {
+        seedMigrationWorkflows(app)
         app.preferences.setPlanner(com.shifthud.domain.planner.PlannerSettings(60,31,com.shifthud.domain.planner.LunchStrategy.CUSTOM,mapOf(LocalDate.of(2026,10,9) to 45),setOf(60,30,15,0)))
         app.preferences.setWeeklyLunch(LocalDate.of(2026,10,17),35)
         app.preferences.setWeeklyLunch(LocalDate.of(2026,10,24),45)
@@ -41,7 +42,7 @@ class BackupRoundTripTest {
                 autoLunchMinutes=60,lunchEndAutomatic=session.lunchEnd!=null,correctionRevision=7).entity())
         }
         app.payroll.save(Paycheck(periodStart=LocalDate.of(2026,9,26),periodEnd=LocalDate.of(2026,10,2),payDate=LocalDate.of(2026,10,8),
-            reportedHours="35.39".toBigDecimal(),grossCents=56624,netCents=49610,deductionsComplete=true,reference="Ref Ω",notes="Keep \"quotes\"\nnewlines",
+            reportedHours="35.39".toBigDecimal(),grossCents=56624,netCents=49610,deductionsComplete=true,reference="Ref Ω",notes="Paystub image reviewed. Synthetic fixture \"quotes\"\nnewlines",
             lines=listOf(PayrollLine(kind=PayrollKind.DEDUCTION,label="TX Withholding Tax",cents=2682),PayrollLine(kind=PayrollKind.DEDUCTION,label="TX EE Social Security Tax",cents=3511),PayrollLine(kind=PayrollKind.DEDUCTION,label="TX EE Medicare Tax",cents=821)),
             deposits=listOf(PayrollDeposit(date=LocalDate.of(2026,10,6),cents=49610))))
         db.quickFind().insert(QuickFindItemEntity(41,"Café","café","Frozen","Keep chilled","[\"coffee\"]",true,123,456,789,3))
@@ -82,6 +83,28 @@ class BackupRoundTripTest {
             assertEquals(24L,employerDuration(p.reportedHours!!).minus(duration).seconds)
             assertEquals(12L,p.grossCents!!-gross)
         }finally{db.close()}
+    }
+    @Test fun completeStoreComparisonAndLegacyCoverageAreExplicit()=runBlocking {
+        seed();val original=manager.snapshot()
+        assertEquals(4,original.workflowCounts()["Frozen tasks"])
+        assertEquals(2,original.workflowCounts()["Count cycles"])
+        assertTrue(compareBackupState(original,BackupSnapshot.decode(original.bytes())).passed)
+        val changed=BackupSnapshot.decode(original.bytes())
+        changed.data.getJSONObject("preferences").getJSONObject("employee").remove("employee_number")
+        assertFalse(compareBackupState(original,changed).passed)
+        val legacy=BackupSnapshot.decode(original.bytes())
+        legacy.manifest.put("payloadVersion",1)
+        EXTRA_KEYS.keys.forEach { legacy.data.getJSONObject("preferences").remove(it);legacy.manifest.getJSONObject("preferenceCounts").remove(it) }
+        val upgraded=BackupSnapshot.decode(legacy.bytes());manager.validate(upgraded)
+        assertTrue(upgraded.coverageWarnings().any {it.contains("Legacy backup")})
+        assertEquals(0,upgraded.workflowCounts()["Frozen tasks"])
+    }
+    @Test fun malformedWorkflowRejectedBeforeReplacement()=runBlocking {
+        seed();val original=manager.snapshot()
+        val bad=BackupSnapshot.decode(original.bytes())
+        bad.data.getJSONObject("preferences").getJSONObject("frozen").getJSONObject("tasks_v1").put("value","{bad")
+        assertTrue(runCatching {manager.restore(bad)}.isFailure)
+        assertTrue(compareBackupState(original,manager.snapshot()).passed)
     }
     @Test fun schemaSixBackupUpgradesWithoutChangingPayrollOrLunchValues()=runBlocking {
         seed();val old=manager.snapshot()
@@ -151,11 +174,30 @@ class BackupRoundTripTest {
         }
         assertEquals(0,app.getSystemService(NotificationManager::class.java).activeNotifications.size)
     }
+    private fun changeEveryStore(target:BackupSnapshot) {
+        val prefs=target.data.getJSONObject("preferences")
+        fun entry(group:String,key:String)=prefs.getJSONObject(group).getJSONObject(key)
+        entry("shift","lunch_threshold_minutes").put("value",301)
+        entry("upcoming","minute").put("value",1111)
+        val rates=JSONArray(entry("rates","history_v1").getString("value"))
+        rates.getJSONObject(rates.length()-1).put("cents",1900)
+        entry("rates","history_v1").put("value",rates.toString())
+        val tasks=JSONObject(entry("frozen","tasks_v1").getString("value"))
+        tasks.getJSONArray("tasks").getJSONObject(0).put("notes","Replacement notes")
+        entry("frozen","tasks_v1").put("value",tasks.toString())
+        val route=JSONObject(entry("countRoute","count_route_v1").getString("value"))
+        route.put("revision",route.getLong("revision")+1)
+        entry("countRoute","count_route_v1").put("value",route.toString())
+        entry("employee","employee_number").put("value","009999")
+        entry("lunchAlerts","minimum").put("value",true)
+        entry("paycheckReminder","day").put("value",5)
+    }
     @Test fun failureAfterEachPersistenceStageRollsBackOriginal()=runBlocking {
         seed();val original=manager.snapshot(true)
         val target=BackupSnapshot.decode(manager.snapshot().bytes())
         target.data.getJSONObject("tables").getJSONArray("scheduled_shifts").getJSONObject(0).put("notes","replacement")
-        for(stage in listOf("journal","database","preferences","verified","checkpoint")){
+        changeEveryStore(target)
+        for(stage in (listOf("journal","database","preferences","verified","checkpoint")+PREFERENCE_GROUPS.map {"store:$it"})){
             var reached=false
             val failing=BackupManager(app){if(it==stage){reached=true;error("Injected storage failure")}}
             assertTrue(runCatching{failing.restore(target)}.isFailure)
@@ -176,7 +218,8 @@ class BackupRoundTripTest {
         seed();val original=manager.snapshot(true)
         val target=BackupSnapshot.decode(manager.snapshot().bytes())
         target.data.getJSONObject("tables").getJSONArray("scheduled_shifts").getJSONObject(0).put("notes","interrupted")
-        for(stage in listOf("journal","database","preferences","verified","checkpoint")){
+        changeEveryStore(target)
+        for(stage in (listOf("journal","database","preferences","verified","checkpoint")+PREFERENCE_GROUPS.map {"store:$it"})){
             val crashing=BackupManager(app){if(it==stage)throw AssertionError("Simulated process death")}
             try{crashing.restore(target);fail()}catch(_:AssertionError){}
             assertTrue(RestoreJournal(File(app.noBackupFilesDir,"restore")).pending)
