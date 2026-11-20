@@ -16,7 +16,10 @@ import kotlinx.coroutines.withContext
 
 private val Context.shiftPreferences by preferencesDataStore(name = "shift_preferences")
 class ShiftPreferences(context: Context, private val onPlanningChanged: suspend (java.time.LocalDate) -> Unit = {},
-    private val onChanged: suspend () -> Unit = {}) {
+    onEmployeeChanged:suspend ()->Unit = {},private val onChanged: suspend () -> Unit = {}) {
+    private val employee=EmployeeNumberPreferences(context,onEmployeeChanged)
+    val employeeNumber=employee.value
+    suspend fun setEmployeeNumber(value:String)=employee.set(value)
     val debugSettings = context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
     internal val store = context.shiftPreferences
     private val decimalKey = booleanPreferencesKey("show_decimal_hours")

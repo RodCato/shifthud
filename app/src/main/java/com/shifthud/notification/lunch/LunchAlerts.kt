@@ -28,6 +28,7 @@ class LunchAlerts(private val context:Context, private val clock:()->Instant = I
     private var scheduled:Instant?=null
     private var scheduledOnce=false
     private fun readSettings()=LunchAlertSettings(prefs.getBoolean("minimum",true),prefs.getBoolean("planned",false),prefs.getInt("snooze",10).coerceIn(1,120),prefs.getBoolean("repeat",false))
+    internal fun reloadRestoredSettings() { _settings.value=readSettings() }
     private fun readLedger():LunchAlertLedger? = runCatching {
         val j=JSONObject(prefs.getString("ledger",null) ?: return null)
         LunchAlertLedger(j.getString("id"),j.getBoolean("min"),j.getBoolean("plan"),if(j.has("at"))Instant.ofEpochMilli(j.getLong("at")) else null,j.getLong("generation"),j.optString("receipt"),j.optBoolean("minimumSent",false))

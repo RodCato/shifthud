@@ -17,6 +17,13 @@ class WidgetActionExecutor(
                 WidgetOperation.CLOCK_IN -> repository.clockIn(command.sessionId, command.date)
                 WidgetOperation.START_LUNCH -> repository.transition(command.sessionId, ShiftState.WORKING, engine::startLunch)
                 WidgetOperation.END_LUNCH -> repository.transition(command.sessionId, ShiftState.ON_LUNCH, engine::endLunch)
+                WidgetOperation.CLOCK_OUT -> {
+                    val expected=requireNotNull(command.expectedState)
+                    require(expected==ShiftState.WORKING || expected==ShiftState.ON_LUNCH)
+                    repository.transition(command.sessionId,expected) { current ->
+                        engine.clockOut(if(current.state==ShiftState.ON_LUNCH) engine.endLunch(current) else current)
+                    }
+                }
                 WidgetOperation.REFRESH -> Unit
             }
             true

@@ -28,6 +28,7 @@ import java.time.LocalDate
     var saved by rememberSaveable{mutableStateOf(false)}
     val picker=rememberLauncherForActivityResult(PickVisualMedia()){uri->if(uri!=null){reviewState.removeState(text);reviewing=false;saved=false;vm.read(uri)}}
     val extraction=remember(text){extractPaystub(text)}
+    LaunchedEffect(text) {if(text.isNotBlank() && !saved) reviewing=true}
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         TextButton(onClick=back){Text("‹ PAYCHECKS")}
         Text("Import Paystub Screenshot",style=MaterialTheme.typography.headlineMedium)

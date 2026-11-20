@@ -7,6 +7,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -24,12 +26,14 @@ import java.time.format.FormatStyle
     var regular by rememberSaveable{mutableStateOf(review?.regular?.toPlainString().orEmpty())}
     var overtime by rememberSaveable{mutableStateOf(review?.overtime?.toPlainString().orEmpty())}
     var calculatedNetAccepted by rememberSaveable{mutableStateOf(false)}
-    var confirmed by rememberSaveable{mutableStateOf(false)}
     var detailsExpanded by rememberSaveable{mutableStateOf(false)}
-    var reviewedWarnings by rememberSaveable{mutableStateOf<String?>(null)}
-    val arithmetic=runCatching{paystubArithmetic(draft.model()) + if(review!=null)(paystubRateCheck(draft.model(),parsePayrollHours(overtime),rates)+paystubSummaryCheck(draft.model(),review)) else emptyList()}.getOrDefault(emptyList())
-    val warningKey=draft.serialize()
-    LaunchedEffect(warningKey){confirmed=false}
+    val model=runCatching {draft.model().let {if(review!=null)it.copy(deductionsComplete=true) else it}}.getOrNull()
+    val arithmetic=model?.let {paystubArithmetic(it) + if(review!=null)(paystubRateCheck(it,runCatching{parsePayrollHours(overtime)}.getOrNull(),rates)+paystubSummaryCheck(it,review)) else emptyList()}.orEmpty()
+    val warningKey=draft.serialize()+"|"+regular+"|"+overtime
+    var confirmedKey by remember(warningKey) {mutableStateOf<String?>(null)}
+    var reviewedWarnings by remember(warningKey) {mutableStateOf<String?>(null)}
+    val confirmed=confirmedKey==warningKey
+    val verificationReady=model?.let {it.payDate!=null && it.reportedHours!=null && it.grossCents!=null && it.netCents!=null && calculatedCashNet(it)!=null}==true
     Dialog(onDismissRequest={if(!busy)dismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(Modifier.fillMaxSize()) { Column(Modifier.safeDrawingPadding().imePadding().padding(16.dp)) {
             Text(if(initial.id==0L)"New paycheck" else "Edit paycheck",style=MaterialTheme.typography.headlineSmall)
@@ -48,19 +52,19 @@ import java.time.format.FormatStyle
                         review.confidence.forEach{(field,confidence)->Text("$field: ${confidence.name.replace('_',' ')}",style=MaterialTheme.typography.bodySmall)}
                     }
                     Text("Regular and overtime hours",style=MaterialTheme.typography.titleMedium)
-                    NumericField("Regular hours",regular,!busy){regular=it;confirmed=false}
-                    NumericField("Overtime hours (if provided)",overtime,!busy){overtime=it;confirmed=false}
+                    NumericField("Regular hours",regular,!busy){regular=it;confirmedKey=null}
+                    NumericField("Overtime hours (if provided)",overtime,!busy){overtime=it;confirmedKey=null}
                     Text("Use only the entered components if they represent all paid hours. Blank does not mean zero. No overtime premium is calculated.",style=MaterialTheme.typography.bodySmall)
                     OutlinedButton(enabled=!busy,onClick={try {
                         val parts=listOfNotNull(parsePayrollHours(regular),parsePayrollHours(overtime))
                         require(parts.isNotEmpty()){ "Enter recognized hours first." }
-                        draft=draft.copy(hours=parts.reduce(java.math.BigDecimal::add).toPlainString());confirmed=false
+                        draft=draft.copy(hours=parts.reduce(java.math.BigDecimal::add).toPlainString());confirmedKey=null
                     }catch(e:Exception){error=e.message}}){Text("USE ENTERED HOURS TOTAL")}
                     review.calculatedNet?.takeIf{review.reportedNet==null}?.let{suggested->
                         Text("Suggested net: $${centsInput(suggested)} (calculated, not reported)")
-                        OutlinedButton(enabled=!busy,onClick={draft=draft.copy(net=centsInput(suggested));calculatedNetAccepted=true;confirmed=false}){Text("ACCEPT CALCULATED NET")}
+                        OutlinedButton(enabled=!busy,onClick={draft=draft.copy(net=centsInput(suggested));calculatedNetAccepted=true;confirmedKey=null}){Text("ACCEPT CALCULATED NET")}
                     }
-                    Text("Recognized total taxes: ${centsInput(review.taxTotal).ifBlank{"Unknown"}} · Total deductions: ${centsInput(review.deductionTotal).ifBlank{"Unknown"}}. Summary rows are not added as deductions.",style=MaterialTheme.typography.bodySmall)
+                    Text("Recognized total taxes: ${centsInput(review.taxTotal).ifBlank{"Unknown"}} · Total deductions: ${centsInput(review.deductionTotal).ifBlank{"Unknown"}}. A recognized tax total is used only when no tax components were captured; totals are never added on top of components.",style=MaterialTheme.typography.bodySmall)
                 }
                 item { Text("Work period",style=MaterialTheme.typography.titleMedium);Text("Defaults to Saturday–Friday. Custom periods are supported; dates are inclusive.",style=MaterialTheme.typography.bodySmall) }
                 item { PayrollDateField("Period start",draft.start,false,!busy){draft=draft.copy(start=it)} }
@@ -72,19 +76,45 @@ import java.time.format.FormatStyle
                     Text("39.15 hours = 39h 9m, not 39h 15m.",style=MaterialTheme.typography.bodySmall)
                     runCatching{parsePayrollHours(draft.hours)?.let(::employerHoursLabel)}.getOrNull()?.let{Text("Equivalent: $it",style=MaterialTheme.typography.bodySmall)}
                 }
-                item { NumericField("Actual gross pay ($)",draft.gross,!busy){draft=draft.copy(gross=it)} }
-                item { NumericField("Actual net pay ($)",draft.net,!busy){draft=draft.copy(net=it);calculatedNetAccepted=false} }
+                item { NumericField("Total gross compensation ($)",draft.gross,!busy){draft=draft.copy(gross=it)} }
+                item { NumericField("Net cash paycheck ($)",draft.net,!busy){draft=draft.copy(net=it);calculatedNetAccepted=false} }
                 item { Text("Deductions and earnings",style=MaterialTheme.typography.titleMedium);Text("Deductions reduce gross; negative amounts represent refunds. Earnings/adjustments are optional details already included in actual gross and are never added twice.",style=MaterialTheme.typography.bodySmall) }
                 items(draft.lines,key={"line${it.id}"}) { line ->
                     OutlinedCard { Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(line.label,{text->draft=draft.copy(lines=draft.lines.map{if(it.id==line.id)it.copy(label=text) else it})},label={Text(if(line.kind==PayrollKind.DEDUCTION)"Deduction category" else "Earnings / adjustment category")},enabled=!busy,modifier=Modifier.fillMaxWidth())
                         NumericField("${line.label} ($)",line.amount,!busy){text->draft=draft.copy(lines=draft.lines.map{if(it.id==line.id)it.copy(amount=text) else it})}
+                        if(line.kind==PayrollKind.NONCASH) {
+                            Text("Noncash compensation · not a bank deposit",style=MaterialTheme.typography.labelLarge)
+                            OutlinedTextField(line.category,{text->draft=draft.copy(lines=draft.lines.map{if(it.id==line.id)it.copy(category=text) else it})},label={Text("Compensation category (optional)")},enabled=!busy,modifier=Modifier.fillMaxWidth())
+                            FlowRow {
+                                listOf(null to "Tax status unknown",true to "Taxable",false to "Nontaxable").forEach { (value,label) ->
+                                    FilterChip(selected=line.taxable==value,enabled=!busy,onClick={draft=draft.copy(lines=draft.lines.map{if(it.id==line.id)it.copy(taxable=value) else it})},label={Text(label)})
+                                }
+                            }
+                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Checkbox(line.includedInGross,{value->draft=draft.copy(lines=draft.lines.map{if(it.id==line.id)it.copy(includedInGross=value) else it})},enabled=!busy,modifier=Modifier.semantics { contentDescription="Already included in reported gross" })
+                                Text("Already included in reported gross")
+                            }
+                            Text("Use the paystub classification. Only amounts included in gross reduce calculated cash net.",style=MaterialTheme.typography.bodySmall)
+                        }
+                        if(line.kind!=PayrollKind.DEDUCTION) TextButton(enabled=!busy,onClick={draft=draft.copy(lines=draft.lines.map{if(it.id==line.id)it.copy(kind=if(it.kind==PayrollKind.NONCASH)PayrollKind.EARNING else PayrollKind.NONCASH,taxable=null,includedInGross=false,category="") else it})}) {
+                            Text(if(line.kind==PayrollKind.NONCASH)"CHANGE TO CASH EARNINGS DETAIL" else "CLASSIFY AS NONCASH")
+                        }
                         TextButton(enabled=!busy,onClick={draft=draft.copy(lines=draft.lines.filterNot{it.id==line.id},complete=if(line.kind==PayrollKind.DEDUCTION)false else draft.complete)}){Text("REMOVE CATEGORY")}
                     } }
                 }
                 item { OutlinedButton(enabled=!busy,onClick={draft=draft.copy(lines=draft.lines+LineDraft(draft.nextId,PayrollKind.DEDUCTION,"Additional deduction",""),nextId=draft.nextId-1,complete=false)}){Text("ADD DEDUCTION")} }
                 item { OutlinedButton(enabled=!busy,onClick={draft=draft.copy(lines=draft.lines+LineDraft(draft.nextId,PayrollKind.EARNING,"Other earnings / adjustments",""),nextId=draft.nextId-1)}){Text("ADD EARNINGS / ADJUSTMENT")} }
+                item { OutlinedButton(enabled=!busy,onClick={draft=draft.copy(lines=draft.lines+LineDraft(draft.nextId,PayrollKind.NONCASH,"Noncash compensation",""),nextId=draft.nextId-1)}){Text("ADD NONCASH COMPENSATION")} }
                 item {
+                    val model=runCatching{draft.model().let {if(review!=null)it.copy(deductionsComplete=true) else it}}.getOrNull()
+                    model?.let {
+                        Text("Cash wages: ${cashWages(it)?.let { value -> "$${centsInput(value)}" } ?: "Unknown"}")
+                        Text("Calculated cash net: ${calculatedCashNet(it)?.let { value -> "$${centsInput(value)}" } ?: "Incomplete — confirm deductions and amounts"}")
+                        cashReconciliationWarning(it)?.let { warning -> Text(warning,color=MaterialTheme.colorScheme.error) }
+                    }
+                }
+                if(review==null)item {
                     Row { Checkbox(draft.complete,{draft=draft.copy(complete=it)},enabled=!busy);Text("All deductions are accounted for") }
                     Text("Fill each deduction amount (including 0), or remove categories that do not apply. Checking this with no deduction categories confirms $0 total. Blank deduction amounts keep the record incomplete.",style=MaterialTheme.typography.bodySmall)
                 }
@@ -102,23 +132,29 @@ import java.time.format.FormatStyle
             }
             if(review!=null) {
                 Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                    Checkbox(confirmed,{confirmed=it},enabled=!busy)
-                    Text("I reviewed the work period, current amounts, missing fields, and OCR uncertainties.",style=MaterialTheme.typography.bodySmall)
+                    Checkbox(confirmed,{confirmedKey=if(it)warningKey else null},enabled=!busy,modifier=Modifier.semantics {contentDescription="Verify paycheck details"})
+                    Text("I've reviewed the extracted paycheck details and confirm they match my paystub.",style=MaterialTheme.typography.bodySmall)
                 }
+                if(!verificationReady) Text("Enter pay date, paid hours, gross, net cash pay and all deduction amounts before verifying.",style=MaterialTheme.typography.bodySmall)
+                else if(cashNetDifference(model!!)==0L) Text("Reconciled — $${centsInput(model.netCents)} net pay",style=MaterialTheme.typography.bodySmall)
                 arithmetic.forEach{Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)}
                 if(arithmetic.isNotEmpty())Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){Checkbox(reviewedWarnings==warningKey,{reviewedWarnings=if(it)warningKey else null});Text("Save with these reviewed differences",style=MaterialTheme.typography.bodySmall)}
             }
             error?.let{Text(it,color=MaterialTheme.colorScheme.error)}
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
+            FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
                 TextButton(enabled=!busy,onClick=dismiss){Text("CANCEL")}
-                Button(enabled=!busy && (review==null || (confirmed && (arithmetic.isEmpty() || reviewedWarnings==warningKey))),onClick={try{
-                    var model=draft.model()
+                if(review!=null) TextButton(enabled=!busy,onClick={try {
+                    val model=draft.model().copy(notes=listOf(draft.notes,"Unverified paystub draft.").filter{it.isNotBlank()}.joinToString("\n"))
+                    save(model){failure->error=failure;if(failure==null)dismiss()}
+                }catch(e:Exception){error=e.message?:"Check your entries."}}){Text("Save draft")}
+                Button(enabled=!busy && (review==null || (verificationReady && confirmed && (arithmetic.isEmpty() || reviewedWarnings==warningKey))),onClick={try{
+                    var model=draft.model().let {if(review!=null)it.copy(deductionsComplete=true) else it}
                     if(review!=null) {
                         parsePayrollHours(regular);parsePayrollHours(overtime)
-                        val provenance="Paystub image reviewed. Regular hours: ${regular.ifBlank{"not provided"}}; overtime hours: ${overtime.ifBlank{"not provided"}}." + if(calculatedNetAccepted) " Net accepted as a calculated suggestion, not explicitly reported." else ""
+                        val provenance="Paystub image reviewed. Details verified against the paystub. Regular hours: ${regular.ifBlank{"not provided"}}; overtime hours: ${overtime.ifBlank{"not provided"}}." + if(calculatedNetAccepted) " Net accepted as a calculated suggestion, not explicitly reported." else ""
                         model=model.copy(notes=listOf(model.notes,provenance).filter{it.isNotBlank()}.joinToString("\n"))
                     }
-                    save(model){failure->error=failure;if(failure==null)dismiss()}}catch(e:Exception){error=e.message?:"Check your entries."}}){Text(if(busy)"SAVING…" else "SAVE PAYCHECK")}
+                    save(model){failure->error=failure;if(failure==null)dismiss()}}catch(e:Exception){error=e.message?:"Check your entries."}}){Text(if(busy)"SAVING…" else if(review!=null)"Save Verified Paycheck" else "SAVE PAYCHECK")}
             }
         } }
     }

@@ -121,7 +121,7 @@ import java.time.format.DateTimeFormatter
                 Text(task.title,Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleMedium,
                     color=if(task.state==FrozenState.COMPLETED) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
             },subtitleContent={
-                Text(if(task.resolvedByOtherAt!=null) "Resolved by another associate" else if(task.carryoverArchived) "Archived carryover · fresh start Nov 1" else if(task.carryoverExcluded) "Dismissed" else task.state.label,Modifier.fillMaxWidth(),color=color,style=MaterialTheme.typography.bodyMedium)
+                Text(if(task.resolvedByOtherAt!=null) "Resolved by another associate" else if(task.carryoverArchived) "Archived carryover · fresh start Nov 1" else if(task.carryoverExcluded) "Dismissed" else if(task.opportunityBased) "When access permits · ${task.state.label}" else task.state.label,Modifier.fillMaxWidth(),color=color,style=MaterialTheme.typography.bodyMedium)
                 if(dailyDate!=null) {
                     val origins=sources[task.id].orEmpty()
                     if(origins.any { it.state==FrozenState.BLOCKED }) Text("Blocked",color=red,style=MaterialTheme.typography.bodySmall)

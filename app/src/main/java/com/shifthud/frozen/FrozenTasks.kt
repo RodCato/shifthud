@@ -45,7 +45,7 @@ fun tuesdayFrozenTemplate(date: LocalDate): List<FrozenTask> {
     )
     return groups.flatMap { (section, titles) -> titles.mapIndexed { index, title ->
         FrozenTask("tuesday-$date-$section-$index", date, title,
-            if(section.contains("BUILD")) "Reference: 3 doors, 5 shelves. Bottom shelf generally pizza; upper shelves variable. Follow management direction." else "",
+            if(section=="MORNING TRANSITION" && index<=2) "Evaluate outgoing display merchandise for transfer to its regular home shelf before consolidating the remainder into backstock." else if(section.contains("BUILD")) "Reference: 3 doors, 5 shelves. Bottom shelf generally pizza; upper shelves variable. Follow management direction." else "",
             workflows=listOf(date.toString()), section=section)
     } }
 }

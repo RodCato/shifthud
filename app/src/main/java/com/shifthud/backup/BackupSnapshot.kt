@@ -25,8 +25,8 @@ data class BackupSnapshot(val manifest:JSONObject,val data:JSONObject) {
             val envelope=JSONObject(bytes.toString(Charsets.UTF_8))
             require(envelope.namesSet()==setOf("manifest","payload"))
             val manifest=envelope.getJSONObject("manifest");val raw=envelope.getString("payload")
-            require(manifest.getInt("format")==1 && manifest.getInt("payloadVersion")==1){"Unsupported backup version. Update ShiftHUD."}
-            require(manifest.getInt("databaseVersion") in 6..8){"Unsupported database schema. No data was changed."}
+            require(manifest.getInt("format")==1 && manifest.getInt("payloadVersion") in 1..2){"Unsupported backup version. Update ShiftHUD."}
+            require(manifest.getInt("databaseVersion") in 6..9){"Unsupported database schema. No data was changed."}
             require(manifest.getString("sha256")==digest(raw.toByteArray())){"Backup integrity check failed."}
             Instant.parse(manifest.getString("created"));ZoneId.of(manifest.getString("zone"))
             val data=JSONObject(raw)
@@ -48,6 +48,22 @@ data class BackupSnapshot(val manifest:JSONObject,val data:JSONObject) {
                 }
                 if(!manifest.has("sourceDatabaseVersion")) manifest.put("sourceDatabaseVersion",7)
                 manifest.put("databaseVersion",8)
+            }
+            if(manifest.getInt("databaseVersion") == 8) {
+                val rows = data.getJSONObject("tables").getJSONArray("payroll_lines")
+                for(i in 0 until rows.length()) {
+                    val row = rows.getJSONObject(i)
+                    require(!row.has("taxable") && !row.has("includedInGross") && !row.has("category"))
+                    row.put("taxable", JSONObject.NULL).put("includedInGross",0).put("category",JSONObject.NULL)
+                }
+                if(!manifest.has("sourceDatabaseVersion")) manifest.put("sourceDatabaseVersion",8)
+                manifest.put("databaseVersion",9)
+            }
+            if(manifest.getInt("payloadVersion")==1) {
+                val prefs=data.getJSONObject("preferences")
+                require(prefs.namesSet()==setOf("shift","rates","upcoming")) {"Unexpected legacy preference groups."}
+                EXTRA_KEYS.keys.forEach {name -> prefs.put(name,JSONObject());manifest.getJSONObject("preferenceCounts").put(name,0)}
+                manifest.put("sourcePayloadVersion",1).put("payloadVersion",2)
             }
             return BackupSnapshot(manifest,data)
         }
@@ -85,7 +101,8 @@ internal suspend fun replaceDatabase(db:ShiftDatabase,tables:JSONObject,sequence
                     else->error("Unsupported column.")
                 }
             }.toTypedArray<Any?>()
-            listOf("lunchPlanApplied","usesGlobalLunch","isFavorite","deductionsComplete","lunchEndAutomatic","manuallyEntered").filter{row.has(it)}.forEach{require(row.getLong(it) in 0L..1L)}
+            listOf("includedInGross","lunchPlanApplied","usesGlobalLunch","isFavorite","deductionsComplete","lunchEndAutomatic","manuallyEntered").filter{row.has(it)}.forEach{require(row.getLong(it) in 0L..1L)}
+            if(row.has("taxable") && !row.isNull("taxable")) require(row.getLong("taxable") in 0L..1L)
             val id=row.getLong("id");require(id>0 && ids.add(id)){"Duplicate or invalid record identifier."}
             sql.execSQL("INSERT INTO $table (${columns.keys.joinToString()}) VALUES (${columns.keys.joinToString{"?"}})",args)
         }

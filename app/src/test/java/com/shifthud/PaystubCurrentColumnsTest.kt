@@ -30,7 +30,7 @@ Dir Dep Acct 8011 $496.10
 """.trimIndent()
 
 class PaystubCurrentColumnsTest {
-    @Test fun realOcrAutoPopulatesWithoutPromotingCalculatedNet() {
+    @Test fun realOcrAutoPopulatesExplicitWrappedPayAmount() {
         val e=extractPaystub(CURRENT_PAYSTUB)
         val p=e.draft(LocalDate.MIN,LocalDate.MIN)
         assertEquals(LocalDate.of(2026,9,26),p.periodStart)
@@ -45,9 +45,9 @@ class PaystubCurrentColumnsTest {
         assertEquals(7014L,e.taxTotal)
         assertEquals(49610L,p.deposits.single().cents)
         assertEquals(49610L,e.calculatedNet)
-        assertNull(p.netCents)
+        assertEquals(49610L,p.netCents)
         assertEquals(ExtractionConfidence.HIGH,e.confidence["reportedHours"])
-        assertEquals(ExtractionConfidence.UNKNOWN,e.confidence["net"])
+        assertEquals(ExtractionConfidence.HIGH,e.confidence["net"])
         assertTrue(e.warnings.toString(),e.warnings.isEmpty())
     }
     @Test fun currentSectionResetsYtdButMixedRowsRemainUnknown() {

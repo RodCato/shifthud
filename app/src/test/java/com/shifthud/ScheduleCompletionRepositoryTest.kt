@@ -55,7 +55,7 @@ class ScheduleCompletionRepositoryTest {
             assertEquals(1,scheduleCompletion(listOf(shift),reloaded).completed)
             db.shifts().deleteHistorical(1)
             assertEquals(0,scheduleCompletion(listOf(shift),ShiftRepository(db,ShiftEngine()).scheduledSessions(listOf(1)).first()).completed)
-            assertEquals(8,db.openHelper.readableDatabase.version)
+            assertEquals(9,db.openHelper.readableDatabase.version)
         } finally { job.cancelAndJoin() }
     }
 }

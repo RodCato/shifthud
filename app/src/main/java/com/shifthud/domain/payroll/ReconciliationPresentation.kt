@@ -9,6 +9,7 @@ fun hoursDifferenceLabel(hours: BigDecimal): String {
     return (if(seconds.signum()>0) "+" else "") + seconds.toPlainString() + " seconds"
 }
 fun reconciliationSummary(r: PayrollReconciliation): String {
+    cashReconciliationWarning(r.paycheck)?.let { return it }
     if(r.netDifference != 0L || r.depositDifference != 0L) return if(r.netDifference==null || r.depositDifference==null)
         "Payroll net/deposits not yet comparable" else "Material unresolved payroll net/deposit difference"
     if(r.hoursDifference==null || r.grossDifference==null) return "Payroll net/deposits balanced · Work comparison incomplete"

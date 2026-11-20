@@ -42,7 +42,7 @@ class WeeklyLunchMigrationTest {
             old.version=7
         }
         repeat(2) {
-            val db=Room.databaseBuilder(context,ShiftDatabase::class.java,name).addMigrations(MIGRATION_7_8).build()
+            val db=Room.databaseBuilder(context,ShiftDatabase::class.java,name).addMigrations(MIGRATION_7_8, MIGRATION_8_9).build()
             try {
                 // Opening Room performs migration and validates the complete version-5 schema.
                 val active=db.shifts().session(10)!!.model()
@@ -58,7 +58,7 @@ class WeeklyLunchMigrationTest {
                 assertEquals(Instant.ofEpochMilli(4000),completed.clockOut)
                 val repo=ShiftRepository(db,ShiftEngine())
                 assertFalse(repo.reconcileAutoLunch(Instant.parse("2026-10-05T12:00:00Z")))
-                assertEquals(8,db.openHelper.readableDatabase.version)
+                assertEquals(9,db.openHelper.readableDatabase.version)
             } finally {db.close()}
         }
         context.deleteDatabase(name)

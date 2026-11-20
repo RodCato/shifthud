@@ -23,17 +23,21 @@ class BackupDeviceAcceptanceTest {
     @Test fun acceptance()=runBlocking {
         val app=InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as ShiftHudApplication
         val phase=InstrumentationRegistry.getArguments().getString("phase")?:"read_only"
+        if(phase!="read_only") check(app.packageName=="com.shifthud.migrationaudit") {
+            "Destructive acceptance phases require the isolated migrationAudit build."
+        }
         val manager=app.backups
         when(phase) {
             "seed" -> {
                 check(app.database.shifts().observeSessions().first().isEmpty())
+                seedMigrationWorkflows(app)
                 PUBLIX_BACKFILL.forEachIndexed{i,r->
                     val s=r.input.session(ZoneId.of("America/Chicago"),Instant.parse("2026-10-10T00:00:00Z"))
                     app.database.shifts().insert(s.copy(id=100L+i,autoLunchMinutes=60,lunchEndAutomatic=s.lunchEnd!=null,correctionRevision=2).entity())
                 }
                 repeat(2){i->app.database.shifts().save(ScheduledShiftEntity(200L+i,LocalDate.of(2026,10,20).plusDays(i.toLong()).toEpochDay(),14400,50400,60,"Future schedule Ω"))}
                 app.payroll.save(Paycheck(periodStart=LocalDate.of(2026,9,26),periodEnd=LocalDate.of(2026,10,2),payDate=LocalDate.of(2026,10,8),
-                    reportedHours="35.39".toBigDecimal(),grossCents=56624,netCents=49610,deductionsComplete=true,reference="Acceptance fixture",notes="Unicode café 🥥",
+                    reportedHours="35.39".toBigDecimal(),grossCents=56624,netCents=49610,deductionsComplete=true,reference="Acceptance fixture",notes="Paystub image reviewed. Synthetic fixture café 🥥",
                     lines=listOf(PayrollLine(kind=PayrollKind.DEDUCTION,label="TX Withholding Tax",cents=2682),PayrollLine(kind=PayrollKind.DEDUCTION,label="TX EE Social Security Tax",cents=3511),PayrollLine(kind=PayrollKind.DEDUCTION,label="TX EE Medicare Tax",cents=821)),
                     deposits=listOf(PayrollDeposit(date=LocalDate.of(2026,10,6),cents=49610))))
                 repeat(2000){i->app.database.quickFind().insert(QuickFindItemEntity(300L+i,"Fixture item $i","fixture item $i",if(i%2==0)"Frozen" else "16","Unicode café","[\"reference $i\"]",i<3,123,456,789,2))}
@@ -48,10 +52,13 @@ class BackupDeviceAcceptanceTest {
                 }
                 app.upcoming.store.save(com.shifthud.notification.upcoming.UpcomingSettings(true,LocalTime.of(19,30),true))
                 File(app.filesDir,"backup-acceptance-expected.json").writeBytes(manager.snapshot().bytes())
+                File(app.filesDir,"backup-acceptance.shifthud").writeBytes(manager.export("backup-test-password".toCharArray()))
             }
             "verify" -> {
                 val expected=BackupSnapshot.decode(File(app.filesDir,"backup-acceptance-expected.json").readBytes())
-                assertEquals(canonical(expected.data),canonical(manager.snapshot().data))
+                val comparison=compareBackupState(expected,manager.snapshot())
+                File(app.filesDir,"migration-verification.txt").writeText(comparison.summary)
+                assertTrue(comparison.summary,comparison.passed)
                 val rows=app.database.shifts().observeSessions().first().map{it.model()}.filter{it.clockIn.atZone(ZoneId.of("America/Chicago")).toLocalDate()>=LocalDate.of(2026,9,26)}
                 val durations=rows.map{app.engine.durations(it,300,Instant.now()).paid}
                 assertEquals(Duration.ofMinutes(2123),durations.fold(Duration.ZERO,Duration::plus))
@@ -83,12 +90,21 @@ class BackupDeviceAcceptanceTest {
             }
             "verify_recovery" -> {
                 val expected=BackupSnapshot.decode(File(app.filesDir,"backup-before-interrupt.json").readBytes())
-                assertEquals(canonical(expected.data),canonical(manager.snapshot().data))
+                val comparison=compareBackupState(expected,manager.snapshot())
+                File(app.filesDir,"migration-verification.txt").writeText(comparison.summary)
+                assertTrue(comparison.summary,comparison.passed)
                 assertFalse(RestoreJournal(File(app.noBackupFilesDir,"restore")).pending)
+            }
+            "duplicate" -> {
+                val expected=BackupSnapshot.decode(File(app.filesDir,"backup-acceptance-expected.json").readBytes())
+                repeat(2) {manager.restore(expected)}
+                assertTrue(compareBackupState(expected,manager.snapshot()).passed)
             }
             "reject" -> {
                 val original=canonical(manager.snapshot().data)
                 val file=File(app.filesDir,"backup-acceptance.shifthud").readBytes()
+                assertTrue(runCatching{manager.readFile(android.net.Uri.fromFile(File(app.filesDir,"nonexistent-backup")))}.isFailure)
+                assertTrue(runCatching{manager.preview(file.copyOf(file.size/2),"backup-test-password".toCharArray())}.isFailure)
                 assertEquals(original,canonical(manager.preview(file,"backup-test-password".toCharArray()).data))
                 assertTrue(runCatching{manager.preview(file,"wrong password".toCharArray())}.isFailure)
                 file[file.lastIndex]=(file.last().toInt() xor 1).toByte()

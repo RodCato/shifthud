@@ -3,7 +3,7 @@ import androidx.room.*
 import com.shifthud.data.local.dao.ShiftDao
 import com.shifthud.data.local.entity.*
 
-@Database(entities = [ScheduledShiftEntity::class, WorkSessionEntity::class, QuickFindItemEntity::class, AisleGuideEntity::class, PaycheckEntity::class, PayrollLineEntity::class, PayrollDepositEntity::class], version = 8, exportSchema = true)
+@Database(entities = [ScheduledShiftEntity::class, WorkSessionEntity::class, QuickFindItemEntity::class, AisleGuideEntity::class, PaycheckEntity::class, PayrollLineEntity::class, PayrollDepositEntity::class], version = 9, exportSchema = true)
 abstract class ShiftDatabase : RoomDatabase() { abstract fun shifts(): ShiftDao
     abstract fun payroll(): com.shifthud.data.local.dao.PayrollDao
     abstract fun aisleGuide(): com.shifthud.data.local.dao.AisleGuideDao
@@ -64,5 +64,14 @@ val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE scheduled_shifts ADD COLUMN employerNetMinutes INTEGER")
         db.execSQL("ALTER TABLE scheduled_shifts ADD COLUMN employerLunchMinutes INTEGER")
+    }
+}
+
+/** Additive metadata; existing payroll amounts and identities are unchanged. */
+val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE payroll_lines ADD COLUMN taxable INTEGER")
+        db.execSQL("ALTER TABLE payroll_lines ADD COLUMN includedInGross INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE payroll_lines ADD COLUMN category TEXT")
     }
 }

@@ -25,7 +25,7 @@ class PayrollRepository(private val db:ShiftDatabase) {
             if(lines.isEmpty())dao.clearLines(id) else dao.removeLines(id,lines)
             val deposits=value.deposits.map{it.id}.filter{it>0}
             if(deposits.isEmpty())dao.clearDeposits(id) else dao.removeDeposits(id,deposits)
-            value.lines.forEach{dao.line(PayrollLineEntity(it.id.coerceAtLeast(0),id,it.kind.name,it.label.trim(),it.cents))}
+            value.lines.forEach{dao.line(PayrollLineEntity(it.id.coerceAtLeast(0),id,it.kind.name,it.label.trim(),it.cents,it.taxable,it.includedInGross,it.category?.trim()?.takeIf(String::isNotEmpty)))}
             value.deposits.forEach{dao.deposit(PayrollDepositEntity(it.id.coerceAtLeast(0),id,it.date?.toEpochDay(),it.cents))}
             id
         }

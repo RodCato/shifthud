@@ -47,7 +47,7 @@ class EarningsDeviceTest {
     @Test fun narrowScreenNavigationFiltersAndReactiveFacts() {
         val data=mutableStateOf(listOf(paycheck));var opened:Long?=null
         ui.setContent {ShiftHudTheme {Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {EarningsOverviewScreen(data.value,emptyList(),{}, {opened=it.id})}}}
-        show("Total Take-Home Pay");capture("overview")
+        show("Total Take-Home Pay · Net cash");capture("overview")
         ui.onNode(hasScrollAction()).performScrollToIndex(0)
         ui.onNodeWithText("MONTH").performClick();ui.onNodeWithContentDescription("Previous period").assertHasClickAction()
         ui.onNodeWithText("ALL TIME").performClick()
@@ -56,7 +56,7 @@ class EarningsDeviceTest {
         show("October 2026 · $400.00 net");ui.onNodeWithText("October 2026 · $400.00 net").performClick()
         show("Hours: 30.25");ui.onNodeWithText("Hours: 30.25").performClick();assertEquals(1L,opened)
         ui.runOnIdle {data.value=listOf(paycheck.copy(netCents=39000))}
-        show("Total Take-Home Pay");ui.onNodeWithText("$390.00").assertIsDisplayed()
+        show("Total Take-Home Pay · Net cash");ui.onNodeWithText("$390.00").assertIsDisplayed()
         ui.runOnIdle {data.value=emptyList()}
         show("No confirmed paychecks in this period. Import a paystub or enter reviewed payroll facts in Paychecks.")
     }
@@ -67,7 +67,7 @@ class EarningsDeviceTest {
             }}
         }}
         ui.onNodeWithText("Earnings Overview").assert(SemanticsMatcher.expectValue(SemanticsProperties.Heading,Unit))
-        capture("large-top");show("Total Take-Home Pay");capture("large-totals")
+        capture("large-top");show("Total Take-Home Pay · Net cash");capture("large-totals")
         show("WORKED — NOT YET PAID · ALL RECORDED WORK");capture("large-pending")
     }
 }

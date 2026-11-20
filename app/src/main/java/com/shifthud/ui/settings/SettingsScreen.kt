@@ -47,6 +47,7 @@ import kotlinx.coroutines.launch
             key(category.title) {
                 com.shifthud.ui.components.ExpandableSection(category.title,category.subtitle,forceOpen=query.isNotBlank()) {
                     entries.forEach { entry -> key(entry.id) { when(entry.id) {
+                        "employee" -> EmployeeNumberSettings(preferences)
                         "decimal" -> {
                             Row(Modifier.fillMaxWidth().toggleable(value=decimal,role=Role.Switch,onValueChange={displayScope.launch { preferences.setShowDecimalHours(it) }}),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                                 Text("Show decimal hours",Modifier.weight(1f)); Switch(checked=decimal,onCheckedChange=null)
@@ -56,6 +57,7 @@ import kotlinx.coroutines.launch
                         "backup" -> com.shifthud.backup.BackupSettingsSection()
                         "history" -> OutlinedButton(onClick=openHistoricalImport) { Text("Historical Data Import") }
                         "lunchAlerts" -> LunchAlertsSection()
+                        "paycheckReminder" -> PaycheckReminderSettingsSection()
                         "upcoming" -> UpcomingSettingsSection()
                         "tests" -> NotificationTestCenterSection()
                         "rates" -> PayRateSettings(data,vm,busy)

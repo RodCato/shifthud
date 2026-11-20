@@ -52,9 +52,25 @@ class PaystubImportPersistenceTest {
                 if(pass==0)repo.save(confirmed)
                 val saved=repo.paychecks.first().single();assertEquals(49610L,saved.netCents);assertEquals(3,saved.lines.size);assertEquals(7014L,saved.lines.sumOf{it.cents!!});assertEquals(confirmed.notes,saved.notes)
                 assertTrue(runCatching{repo.save(confirmed.copy(grossCents=1))}.isFailure);assertEquals(saved,repo.paychecks.first().single())
-                assertTrue(db.shifts().observeSessions().first().isEmpty());assertTrue(db.shifts().scheduleSnapshot().isEmpty());assertEquals(8,db.openHelper.readableDatabase.version)
+                assertTrue(db.shifts().observeSessions().first().isEmpty());assertTrue(db.shifts().scheduleSnapshot().isEmpty());assertEquals(9,db.openHelper.readableDatabase.version)
             }finally{db.close()}
         }}finally{context.deleteDatabase(name)}
+    }
+    @Test fun payAmountReviewSavesOnceAndPreservesOtherHistory()=runBlocking {
+        val db=Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(),ShiftDatabase::class.java).build()
+        try {
+            val repo=PayrollRepository(db)
+            val prior=noncashFixture().copy(notes="Paystub image reviewed. Historical confirmation.")
+            repo.save(prior.copy(id=0));val historical=repo.paychecks.first().single()
+            val e=extractPaystub(PAY_AMOUNT_FIXTURE)
+            val confirmed=e.draft(e.start!!,e.end!!).copy(deductionsComplete=true,notes="Paystub image reviewed. Details verified against the paystub.")
+            repo.save(confirmed)
+            assertTrue(runCatching{repo.save(confirmed)}.isFailure)
+            val rows=repo.paychecks.first();assertEquals(2,rows.size);assertEquals(historical,rows.single{it.id==historical.id})
+            val imported=rows.single{it.periodStart==e.start}
+            assertEquals(53751L,imported.netCents);assertEquals(0L,cashNetDifference(imported))
+            assertEquals("1024.26".toBigDecimal(),earningsOverview(rows).totals().net.known)
+        }finally{db.close()}
     }
     @Test fun photoPickerRequestsOnlyImagesWithoutBroadStoragePermissions(){
         val context=RuntimeEnvironment.getApplication()

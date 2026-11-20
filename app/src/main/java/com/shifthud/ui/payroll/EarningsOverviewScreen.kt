@@ -86,8 +86,11 @@ fun EarningsOverviewScreen(records: List<Paycheck>, coverage: List<EarningsCover
         if (totals.checks.isEmpty()) item { Text("No confirmed paychecks in this period. Import a paystub or enter reviewed payroll facts in Paychecks.") }
         else item { EarningsCard(if (mode=="ALL TIME") "DOCUMENTED LIFETIME EARNINGS" else "DOCUMENTED EARNINGS") {
             Text(metric(totals.net),style=MaterialTheme.typography.headlineMedium)
-            Text("Total Take-Home Pay")
-            Text("Total Gross Pay: ${metric(totals.gross)}")
+            Text("Total Take-Home Pay · Net cash")
+            Text("Gross compensation: ${metric(totals.gross)}")
+            Text("Cash wages: ${metric(totals.cash)}")
+            Text("Noncash compensation: ${metric(totals.noncash)}")
+            Text("Taxable noncash: ${metric(totals.taxableNoncash)}")
             Text("Total Taxes Withheld: ${metric(totals.taxes)}")
             Text("Other Deductions: ${metric(totals.other)}")
             Text("Total Paid Hours: ${metric(totals.hours,false)}")
@@ -111,7 +114,7 @@ fun EarningsOverviewScreen(records: List<Paycheck>, coverage: List<EarningsCover
                 val values=EarningsTotals(checks)
                 OutlinedButton(onClick={expanded=if(expanded==key.toString()) null else key.toString()},modifier=Modifier.fillMaxWidth().semantics { stateDescription=if(expanded==key.toString()) "Expanded" else "Collapsed" }) { Text("${key.format(DateTimeFormatter.ofPattern("MMMM uuuu",locale))} · ${metric(values.net)} net") }
                 if(expanded==key.toString()) EarningsCard("Monthly payroll") {
-                    Text("Gross: ${metric(values.gross)}\nTaxes: ${metric(values.taxes)}\nOther deductions: ${metric(values.other)}\nTake-home: ${metric(values.net)}\nHours paid: ${metric(values.hours,false)}\nPaychecks: ${checks.size}")
+                    Text("Gross compensation: ${metric(values.gross)}\nCash wages: ${metric(values.cash)}\nNoncash compensation: ${metric(values.noncash)}\nTaxable noncash: ${metric(values.taxableNoncash)}\nTaxes: ${metric(values.taxes)}\nOther deductions: ${metric(values.other)}\nTake-home: ${metric(values.net)}\nHours paid: ${metric(values.hours,false)}\nPaychecks: ${checks.size}")
                     checks.forEach { history(it) }
                 }
             }

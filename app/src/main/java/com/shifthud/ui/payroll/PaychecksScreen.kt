@@ -82,15 +82,18 @@ import java.time.format.*
             else {
                 item { Section(r.status.label) {
                     Text(reconciliationSummary(r))
+                    if(p.notes.lineSequence().any {it.startsWith("Paystub image reviewed.")}) Text("Paystub review confirmed · Work and deposit reconciliation is separate",style=MaterialTheme.typography.bodySmall)
                     Text("Pay date: ${p.payDate?.format(dates)?:"Not entered"}")
                     Text("Reconciled requires employer hours, gross, net, confirmed deductions, pay date, dated deposits, completed work, and zero differences. Optional earnings details, notes, and references are not required.",style=MaterialTheme.typography.bodySmall)
                 } }
                 item { Section("Employer payroll") {
                     Text("Reported hours: ${p.reportedHours?.toPlainString()?:"Not entered"}")
                     p.reportedHours?.let{Text("Equivalent: ${employerHoursLabel(it)}")}
-                    Text("Actual gross: ${moneyOrMissing(p.grossCents)}")
-                    Text("Actual net: ${moneyOrMissing(p.netCents)}")
-                    p.lines.forEach{line->Text("${line.label}: ${moneyOrMissing(line.cents)}${if(line.kind==PayrollKind.EARNING)" · included in gross" else ""}")}
+                    Text("Gross compensation: ${moneyOrMissing(p.grossCents)}")
+                    Text("Cash wages: ${moneyOrMissing(cashWages(p))}")
+                    Text("Noncash compensation: ${moneyOrMissing(noncashCents(p))}")
+                    Text("Net cash pay: ${moneyOrMissing(p.netCents)}")
+                    p.lines.forEach{line->Text("${line.label}: ${moneyOrMissing(line.cents)}${if(line.kind==PayrollKind.NONCASH)" · noncash · ${line.category.orEmpty()} · ${when(line.taxable){true->"taxable";false->"nontaxable";null->"tax status unknown"}} · ${if(line.includedInGross)"included in gross" else "not included in gross"}" else if(line.kind==PayrollKind.EARNING)" · included in gross" else ""}")}
                     Text("Known deduction subtotal: ${if(p.lines.any{it.kind==PayrollKind.DEDUCTION && it.cents!=null})money(r.knownDeductions,locale) else "Not entered"}")
                     Text("Reported deductions: ${r.deductions?.let{money(it,locale)}?:"Incomplete — confirm all deductions"}")
                 } }
@@ -105,9 +108,9 @@ import java.time.format.*
                     r.hoursDifference?.let { Text("Exact decimal-hours difference: ${it.toPlainString()} h",style=MaterialTheme.typography.bodySmall) }
                     Text("Minor display label means at most 60 seconds and $1 gross; reconciliation still requires zero differences. Seconds shown to 0.001 s.",style=MaterialTheme.typography.bodySmall)
                     if(r.possibleHoursRounding)Text("This small difference may reflect employer hours rounded to two decimals. It is still shown, not silently reconciled.",style=MaterialTheme.typography.bodySmall)
-                    Text("Actual gross − estimated base gross: ${signed(r.grossDifference)}")
-                    Text("Actual gross: ${moneyOrMissing(p.grossCents)}\nLess confirmed deductions: ${r.deductions?.let{money(it,locale)}?:"Unknown"}\nCalculated net: ${r.calculatedNet?.let{money(it,locale)}?:"Not yet calculable"}\nActual net: ${moneyOrMissing(p.netCents)}")
-                    Text("Calculated net − actual net: ${signed(r.netDifference)}")
+                    Text("Cash wages − estimated base gross: ${signed(r.grossDifference)}")
+                    Text("Gross compensation: ${moneyOrMissing(p.grossCents)}\nLess noncash included in gross: ${moneyOrMissing(noncashCents(p) { it.includedInGross })}\nLess confirmed deductions: ${r.deductions?.let{money(it,locale)}?:"Unknown"}\nCalculated net: ${r.calculatedNet?.let{money(it,locale)}?:"Not yet calculable"}\nNet cash pay: ${moneyOrMissing(p.netCents)}")
+                    Text(cashReconciliationWarning(p) ?: if(r.netDifference==0L)"Cash paycheck reconciles" else "Cash reconciliation incomplete")
                     Text("Actual net − total linked deposits: ${signed(r.depositDifference)}")
                     Text("Differences can have multiple causes. ShiftHUD does not infer taxes, adjust timestamps, or assume deposits equal net pay.",style=MaterialTheme.typography.bodySmall)
                 } }

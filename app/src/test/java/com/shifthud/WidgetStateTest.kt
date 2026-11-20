@@ -17,18 +17,18 @@ class WidgetStateTest {
     private fun state(schedule: List<ScheduledShift> = listOf(shift()), session: WorkSession? = null, minutes: Long = 0, threshold: Int = 360) =
         factory.create(schedule, session, threshold, start.plusSeconds(minutes * 60), ZoneOffset.UTC, Locale.US)
 
-    @Test fun offTodayWithNoUpcomingOffersAdd() {
+    @Test fun offTodayWithNoUpcomingOffersClockIn() {
         val s = state(emptyList())
         assertEquals(WidgetStatus.OFF_TODAY, s.status)
         assertEquals("NO UPCOMING SHIFT", s.headline)
-        assertEquals("ADD SHIFT", s.actionLabel)
-        assertEquals("Schedule", s.destination)
+        assertEquals("CLOCK IN", s.actionLabel)
+        assertEquals("Dashboard", s.destination)
     }
     @Test fun nextShiftIsChronologicalAndExcludesPast() {
         val s = state(listOf(shift(date = day.plusDays(3)), shift(date = day.minusDays(1)), shift(date = day.plusDays(1), from = 9), shift(date = day.plusDays(1), from = 4)))
         assertEquals("OFF TODAY", s.headline)
         assertEquals("Next: Tue Oct 6 · 4:00 AM – 1:00 PM", s.detail)
-        assertEquals("OPEN SCHEDULE", s.actionLabel)
+        assertEquals("CLOCK IN", s.actionLabel)
     }
     @Test fun todayBeforeStartShowsCountdownAndClockIn() {
         val s = state(minutes = -90)
@@ -43,6 +43,7 @@ class WidgetStateTest {
         assertEquals("WORKING · 4h 37m", s.headline)
         assertEquals("Lunch due in 1h 23m", s.detail)
         assertEquals(WidgetOperation.START_LUNCH, s.command!!.operation)
+        assertEquals(ShiftState.WORKING,s.clockOutCommand!!.expectedState)
     }
     @Test fun thresholdPreferenceChangesCountdown() { assertEquals("Lunch due in 23m", state(session = session(), minutes = 277, threshold = 300).detail) }
     @Test fun thresholdReachedDoesNotShowNegativeMinutes() { assertEquals("Lunch threshold reached", state(session = session(), minutes = 400).detail) }
@@ -58,6 +59,7 @@ class WidgetStateTest {
         assertEquals("ON LUNCH · 23m", s.headline)
         assertEquals("Paid · 4h 0m", s.detail)
         assertEquals(WidgetOperation.END_LUNCH, s.command!!.operation)
+        assertEquals(ShiftState.ON_LUNCH,s.clockOutCommand!!.expectedState)
     }
     @Test fun workAfterLunchExcludesLunchAndDoesNotOfferSecondLunch() {
         val s = state(session = session().copy(lunchStart = start.plusSeconds(240 * 60), lunchEnd = start.plusSeconds(270 * 60)), minutes = 300)
@@ -68,8 +70,8 @@ class WidgetStateTest {
         assertEquals(start.plusSeconds(240 * 60), s.completedLunch!!.start)
         assertEquals(start.plusSeconds(270 * 60), s.completedLunch!!.end)
         assertEquals(Duration.ofMinutes(30), s.completedLunch!!.duration)
-        assertEquals("OPEN APP", s.actionLabel)
-        assertNull(s.command)
+        assertEquals("CLOCK OUT", s.actionLabel)
+        assertEquals(WidgetOperation.CLOCK_OUT,s.command!!.operation)
     }
     @Test fun completedLunchRemainsAvailableAtAllWidgetSizes() {
         val s = state(emptyList(), session().copy(lunchStart = start.plusSeconds(240 * 60), lunchEnd = start.plusSeconds(270 * 60)), minutes = 300)
@@ -81,7 +83,7 @@ class WidgetStateTest {
             assertFalse(detail.contains("Lunch due"))
         }
         assertEquals("Unscheduled shift", s.scheduledOut)
-        assertEquals("OPEN APP", s.actionLabel)
+        assertEquals("CLOCK OUT", s.actionLabel)
     }
     @Test fun completedLunchUsesDeviceHourPreference() {
         val persisted = session().copy(lunchStart = start.plusSeconds(600 * 60), lunchEnd = start.plusSeconds(650 * 60))
@@ -93,6 +95,8 @@ class WidgetStateTest {
         val complete = session().copy(lunchStart = start.plusSeconds(240 * 60), lunchEnd = start.plusSeconds(270 * 60), clockOut = start.plusSeconds(480 * 60), state = ShiftState.COMPLETE)
         val s = state(listOf(shift(), shift(id = 2, date = day.plusDays(2))), complete, 600)
         assertEquals(WidgetStatus.COMPLETE, s.status)
+        assertEquals("CLOCK IN NEW SESSION",s.actionLabel)
+        assertEquals(WidgetCommand(WidgetOperation.CLOCK_IN,8,day),s.command)
         assertEquals("Paid · 7h 30m", s.detail)
         assertEquals("Store · 8h 0m", s.scheduledOut)
         assertTrue(s.extra!!.startsWith("Next: Wed Oct 7"))

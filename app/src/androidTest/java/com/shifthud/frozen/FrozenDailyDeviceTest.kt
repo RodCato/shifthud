@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.*
 import androidx.datastore.preferences.core.*
 import androidx.test.platform.app.InstrumentationRegistry
 import com.shifthud.ui.theme.ShiftHudTheme
+import com.shifthud.widget.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.junit.*
@@ -25,13 +26,56 @@ class FrozenDailyDeviceTest {
     private val job=SupervisorJob()
     private val file=File(context.cacheDir,"daily-frozen-isolated.preferences_pb")
     private val dataStore=PreferenceDataStoreFactory.create(scope=CoroutineScope(Dispatchers.IO+job),produceFile={file})
-    private val store=FrozenTaskStore(dataStore)
+    private var scheduledDays=emptySet<LocalDate>()
+    private val store=FrozenTaskStore(dataStore,scheduledDates={scheduledDays})
     @After fun close()=runBlocking {ui.runOnIdle {models.clear()};job.cancelAndJoin();file.delete();Unit}
     private fun show(text:String) {ui.onNode(hasScrollAction()).performScrollToNode(hasText(text))}
     private fun capture(name:String) {
         ui.waitForIdle();InstrumentationRegistry.getInstrumentation().waitForIdleSync();android.os.SystemClock.sleep(250)
         val image=InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         try {File(context.cacheDir,"daily-$name.png").outputStream().use {image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}} finally {image.recycle()}
+    }
+    @Test fun smartEntryWaitsForScheduleAndPreservesManualBrowsing()=runBlocking {
+        val today=LocalDate.of(2026,11,12)
+        val friday=today.plusDays(1)
+        val sunday=today.plusDays(3)
+        fun shift(date:LocalDate)=com.shifthud.domain.model.ScheduledShift(date=date,scheduledStart=java.time.LocalTime.of(8,0),scheduledEnd=java.time.LocalTime.of(17,0))
+        val schedule=mutableStateOf(emptyList<com.shifthud.domain.model.ScheduledShift>())
+        val ready=mutableStateOf(false)
+        val visit=mutableIntStateOf(0)
+        val vm=FrozenTasksViewModel(store,automatic=true).also{models.put("smart",it)}
+        val before=store.tasks.first()
+        ui.setContent {ShiftHudTheme {Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {
+            key(visit.intValue) {FrozenDailyScreen(vm,{}, {},currentDate={today},schedule=schedule.value,scheduleLoaded=ready.value)}
+        }}}
+        ui.onNodeWithText("Loading schedule…").assertExists()
+        assertEquals(before,store.tasks.first());assertTrue(store.dailyDates.first().isEmpty())
+        ui.runOnIdle {schedule.value=listOf(shift(friday));ready.value=true}
+        ui.onNodeWithText("Friday, Nov 13, 2026").assertIsDisplayed()
+        ui.onNodeWithText("Read-only preview · carryovers are projected").assertIsDisplayed()
+        assertEquals(before,store.tasks.first());assertTrue(store.dailyDates.first().isEmpty())
+        ui.runOnIdle {schedule.value=listOf(shift(sunday))}
+        ui.onNodeWithText("Friday, Nov 13, 2026").assertIsDisplayed()
+        ui.onNodeWithContentDescription("Previous day").performClick()
+        ui.onNodeWithText("Thursday, Nov 12, 2026").assertIsDisplayed()
+        ui.onNodeWithContentDescription("Previous day").performClick()
+        ui.onNodeWithText("Wednesday, Nov 11, 2026").assertIsDisplayed()
+        ui.onNodeWithText("Today").performClick()
+        ui.onNodeWithText("Thursday, Nov 12, 2026").assertIsDisplayed()
+        ui.onNodeWithText("Next Shift").performClick()
+        ui.onNodeWithText("Sunday, Nov 15, 2026").assertIsDisplayed()
+        val persisted=store.tasks.first()
+        ui.runOnIdle {schedule.value=listOf(shift(friday));visit.intValue++}
+        ui.onNodeWithText("Friday, Nov 13, 2026").assertIsDisplayed()
+        assertEquals(persisted,store.tasks.first())
+        assertFalse(friday in store.dailyDates.first());assertFalse(sunday in store.dailyDates.first())
+    }
+    @Test fun widgetEntryStillOpensTodayOnDayOff() {
+        val today=LocalDate.of(2026,11,12)
+        val vm=FrozenTasksViewModel(store,automatic=true).also{models.put("widgetToday",it)}
+        ui.setContent {ShiftHudTheme {FrozenDailyScreen(vm,{}, {},currentDate={today},schedule=listOf(com.shifthud.domain.model.ScheduledShift(date=today.plusDays(1),scheduledStart=java.time.LocalTime.NOON,scheduledEnd=java.time.LocalTime.of(20,0))),startToday=true)}}
+        ui.onNodeWithText("Thursday, Nov 12, 2026").assertIsDisplayed()
+        ui.onNodeWithText("Read-only preview · carryovers are projected").assertDoesNotExist()
     }
     @Test fun todayLoadsWithoutStartAndCheckboxPersists() {
         val today=LocalDate.of(2026,11,2)
@@ -153,5 +197,66 @@ class FrozenDailyDeviceTest {
         show("Run Frozen backstock")
         ui.onAllNodesWithText("Run Frozen backstock").assertCountEquals(1)
         ui.onNodeWithContentDescription("Complete Run Frozen backstock").assertHasClickAction();capture("large-carryover")
+    }
+    @Test fun widgetCompletionSynchronizesWithOpenTasksAndAppReopening()=runBlocking {
+        val today=LocalDate.now()
+        store.openDaily(today)
+        store.add("Widget synchronization fixture","Description","Preserved notes")
+        val task=store.tasks.first().single {it.title=="Widget synchronization fixture"}
+        val vm=FrozenTasksViewModel(store,automatic=true).also {models.put("daily",it)}
+        ui.setContent {ShiftHudTheme {Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {
+            FrozenDailyScreen(vm,{}, {},currentDate={today})
+        }}}
+        ui.waitUntil(10000) {ui.onAllNodes(hasScrollAction()).fetchSemanticsNodes().isNotEmpty()}
+        val rendered=widgetFrozenState(store.tasks.first(),FloatCounts(),today).tasks.single {it.id==task.id}
+        assertTrue(FrozenTaskActionExecutor(store).execute(FrozenTaskCommand(today,rendered.id,rendered.revision,true)))
+        ui.waitUntil(10000) {runBlocking {store.tasks.first().single {it.id==task.id}.state==FrozenState.COMPLETED}}
+        show("COMPLETED (1)")
+        ui.onNodeWithText("COMPLETED (1)").performClick()
+        show(task.title)
+        ui.onNodeWithContentDescription("Reopen ${task.title}").performClick()
+        ui.waitUntil(10000) {runBlocking {!widgetFrozenState(store.tasks.first(),FloatCounts(),today).tasks.single {it.id==task.id}.completed}}
+        assertEquals("Preserved notes",store.tasks.first().single {it.id==task.id}.notes)
+    }
+    @Test fun optionalTrainingAndEndcapGuidanceUseExistingTaskCheckboxes()=runBlocking {
+        val monday=LocalDate.of(2026,11,9)
+        scheduledDays=setOf(monday)
+        val vm=FrozenTasksViewModel(store,automatic=true).also {models.put("daily",it)}
+        ui.setContent {ShiftHudTheme {Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {
+            FrozenDailyScreen(vm,{}, {},currentDate={monday})
+        }}}
+        ui.waitUntil(10000) {runBlocking {store.tasks.first().count {it.date==monday}==13}}
+        show("Manage Outgoing Endcap Inventory")
+        ui.onNodeWithContentDescription("Complete Manage Outgoing Endcap Inventory").assertHasClickAction()
+        show("Check Endcap Before Opening Ad Cases")
+        ui.onNodeWithContentDescription("Complete Check Endcap Before Opening Ad Cases").assertHasClickAction()
+        show("OPTIONAL · LOW PRIORITY (1)")
+        ui.onNodeWithText("OPTIONAL · LOW PRIORITY (1)").assertIsDisplayed()
+        val title="Check Available CBTs / GRS Training"
+        show(title);ui.onNodeWithContentDescription("Complete $title").performClick()
+        ui.waitUntil(10000) {runBlocking {widgetFrozenState(store.tasks.first(),FloatCounts(),monday).tasks.single {it.optional}.completed}}
+        val saved=store.tasks.first().single {it.optionalTraining}
+        assertEquals(1,saved.history.size)
+        assertFalse(dailyFrozenRows(store.tasks.first(),monday.plusDays(1)).any {it.task.id==saved.id})
+    }
+    @Test fun publixProChecksCompleteIndependentlyAndSimsShowsOpportunityLabel()=runBlocking {
+        val monday=LocalDate.of(2026,11,16)
+        scheduledDays=setOf(monday)
+        val vm=FrozenTasksViewModel(store,automatic=true).also {models.put("daily",it)}
+        ui.setContent {ShiftHudTheme {Surface(Modifier.width(320.dp).fillMaxHeight().systemBarsPadding()) {
+            FrozenDailyScreen(vm,{}, {},currentDate={monday})
+        }}}
+        ui.waitUntil(10000) {runBlocking {store.tasks.first().any {it.id=="pro-morning-$monday"}}}
+        val morning="Check Publix Pro Store Lists"
+        val afternoon="Recheck Publix Pro Store Lists"
+        show(morning);ui.onNodeWithContentDescription("Complete $morning").performClick()
+        ui.waitUntil(10000) {runBlocking {widgetFrozenState(store.tasks.first(),FloatCounts(),monday).tasks.single {it.id=="pro-morning-$monday"}.completed}}
+        assertFalse(widgetFrozenState(store.tasks.first(),FloatCounts(),monday).tasks.single {it.id=="pro-afternoon-$monday"}.completed)
+        show("Review Pending SIMS Corrections")
+        show("When access permits · To do")
+        ui.onNodeWithText("When access permits · To do").assertIsDisplayed()
+        show(afternoon);ui.onNodeWithContentDescription("Complete $afternoon").performClick()
+        ui.waitUntil(10000) {runBlocking {widgetFrozenState(store.tasks.first(),FloatCounts(),monday).tasks.single {it.id=="pro-afternoon-$monday"}.completed}}
+        assertFalse(dailyFrozenRows(store.tasks.first(),monday.plusDays(1)).any {it.task.opportunityBased})
     }
 }

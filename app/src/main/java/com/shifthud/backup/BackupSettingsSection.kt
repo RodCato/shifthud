@@ -45,7 +45,7 @@ import java.time.format.DateTimeFormatter
     fun run(block:suspend ()->Unit) {
         busy=true;message=null
         scope.launch {
-            try{block()}catch(e:Exception){message=e.message?:"Operation failed. Existing records have not been replaced."}
+            try{block()}catch(e:Exception){message="FAIL — "+(e.message?:"Operation failed. Review the recovery status before retrying.")}
             finally{busy=false;password="";confirmation=""}
         }
     }
@@ -62,6 +62,7 @@ import java.time.format.DateTimeFormatter
             Column(Modifier.safeDrawingPadding().imePadding().verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
                 Text("Backup & Restore",style=MaterialTheme.typography.headlineMedium)
                 Text("Encrypted, portable backups. No account or network connection is required. Your selected document provider may sync the encrypted file.")
+                Text("Encrypted backups include Employee Number, Frozen history, count-route progress and float counts. Unfinished OCR reviews and source images are not retained; save reviews before migrating.")
                 Text("Back up after clocking out. Restore replaces all supported data and requires no active shift. A forgotten password cannot be recovered.")
                 if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
                 if(preview==null) {
@@ -82,11 +83,13 @@ import java.time.format.DateTimeFormatter
                     OutlinedButton(enabled=!busy,onClick={pick.launch(arrayOf("*/*"))}){Text("RESTORE FROM BACKUP")}
                 }
                 preview?.let { p->
-                    Text("Compatible backup · Ready for review",style=MaterialTheme.typography.titleLarge)
+                    Text("Integrity PASS · Compatible backup · Ready for review",style=MaterialTheme.typography.titleLarge)
                     val created=Instant.parse(p.manifest.getString("created")).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM))
                     Text("Created: $created\nApp: ${p.manifest.getString("appVersion")} · Format: ${p.manifest.getInt("format")}\nSource time zone: ${p.manifest.getString("zone")}")
                     p.counts.forEach{(name,count)->Text("${name.replace('_',' ')}: $count (currently ${existing[name]?:0})")}
                     p.manifest.optJSONObject("preferenceCounts")?.let{counts->counts.namesSet().sorted().forEach{Text("${it.replace('_',' ')} preferences: ${counts.getInt(it)}")}}
+                    p.workflowCounts().forEach{(name,count)->Text("$name: $count")}
+                    p.coverageWarnings().forEach{Text(it,color=MaterialTheme.colorScheme.error)}
                     soundWarnings.forEach{Text(it,color=MaterialTheme.colorScheme.error)}
                     Text("Includes pay-rate history, favorites/recent finds, and reminder/weekly-target preferences.")
                     Text("Android notification permission, channel sounds/vibration, and widget placement do not transfer. Review them in Android notification settings after restore; reselect custom sounds on this phone.")
