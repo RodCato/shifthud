@@ -8,7 +8,7 @@ import java.time.format.ResolverStyle
 
 enum class ExtractionConfidence { HIGH, REVIEW_REQUIRED, UNKNOWN }
 
-/** Suggestions only. Unknown/ambiguous values stay null; summary rows are never payroll components. */
+/** Suggestions only. Unknown/ambiguous values stay null; summary rows never add to their components. */
 data class PaystubExtraction(
     val start:LocalDate?, val end:LocalDate?, val payDate:LocalDate?, val regular:BigDecimal?, val overtime:BigDecimal?,
     val gross:Long?, val reportedNet:Long?, val lines:List<PayrollLine>, val deposits:List<PayrollDeposit>,
@@ -49,7 +49,25 @@ fun extractPaystub(text:String):PaystubExtraction {
     var section=""
     var uncertainColumns=false
     fun amount(key:String,v:Long){values.getOrPut(key){mutableListOf()}+=v}
-    for(raw in source.lines().take(500)) {
+    // A standalone label followed by exactly one monetary token is a bounded field,
+    // not a guessed numeric column. Mixed/YTD rows remain subject to the usual checks.
+    val input=source.lines().take(500)
+    val normalized=mutableListOf<String>()
+    var index=0
+    while(index<input.size) {
+        val line=input[index].trim()
+        val next=input.getOrNull(index+1)?.trim()
+        val splitPay=Regex("(?i)^pay\\s+(.+?)\\s+ytd\\s+pay(?:\\s+.*)?$").matchEntire(line)
+        val current=splitPay?.groupValues?.get(1)
+        if(next?.matches(Regex("(?i)amount\\s*:?") )==true && current!=null && moneyToken.matches(current)) {
+            // Wrapped Pay/Amount label, with the current value explicitly left of the YTD label.
+            // Preserve the YTD boundary for later rows instead of guessing any YTD number.
+            normalized+="Pay Amount $current";normalized+="YTD Pay";index+=2
+        } else if(Regex("(?i)^pay\\s+amount\\s*:?").matches(line) && next!=null && moneyToken.matches(next)) {
+            normalized+="$line $next";index+=2
+        } else {normalized+=line;index++}
+    }
+    for(raw in normalized) {
         val line=raw.trim();if(line.isEmpty())continue
         val lower=line.lowercase()
         val heading=when(lower) {
@@ -109,6 +127,7 @@ fun extractPaystub(text:String):PaystubExtraction {
             "total" in key && "tax" in key -> amount("tax",cents)
             "total" in key && "deduct" in key -> amount("deduct",cents)
             "gross" in key || key=="total earnings" -> amount("gross",cents)
+            key=="pay amount" -> amount("payAmount",cents)
             "net pay" in key || "net earnings" in key -> amount("net",cents)
             "total" in key -> warnings+="Summary excluded from components: $line"
             "direct deposit" in key || "dir dep" in key || (section=="direct deposits") -> deposits+=PayrollDeposit(cents=cents)
@@ -121,11 +140,20 @@ fun extractPaystub(text:String):PaystubExtraction {
     fun day(key:String)=dates[key]?.let{if(it.size==1)it.single() else {warnings+="Multiple $key dates found; choose manually.";null}}
     fun hour(key:String)=hours[key]?.let{if(it.size==1)it.single() else {warnings+="Multiple $key hours found; choose manually.";null}}
     val repeated=components.groupBy{it.kind to it.label}.filterValues{it.size>1}.keys
-    val lines=components.filter{(it.kind to it.label) !in repeated}
+    var lines=components.filter{(it.kind to it.label) !in repeated}
     if(repeated.isNotEmpty())warnings+="Repeated component labels excluded; review source and add the correct current rows."
     val distinctDeposits=if(deposits.map{it.cents}.distinct().size!=deposits.size){warnings+="Equal deposit amounts may be duplicates; confirm each deposit or remove repeated rows.";deposits}else deposits
     val start=day("start");val end=day("end");val pay=day("pay")
-    val gross=value("gross");val net=value("net");val tax=value("tax");val deductions=value("deduct")
+    val gross=value("gross");val reportedNet=value("net");val payAmount=value("payAmount");val tax=value("tax");val deductions=value("deduct")
+    val net=when {
+        values.containsKey("payAmount") && payAmount==null -> null
+        payAmount!=null && values.containsKey("net") && (reportedNet==null || reportedNet!=payAmount) -> {warnings+="Pay Amount and net pay disagree; confirm net cash pay manually.";null}
+        else -> payAmount ?: reportedNet
+    }
+    // A recognized total is authoritative when no individual tax lines are captured.
+    // Never add it alongside components, and never synthesize a zero.
+    if(tax!=null && lines.none {it.kind==PayrollKind.DEDUCTION && isTaxLabel(it.label)})
+        lines=lines+PayrollLine(kind=PayrollKind.DEDUCTION,label="Total Taxes",cents=tax)
     val regular=hour("regular");val ot=hour("ot")
     if(start==null || end==null)warnings+="Work period not fully recognized; editor dates start from your selected period and must be confirmed."
     if(gross==null)warnings+="Gross not recognized."

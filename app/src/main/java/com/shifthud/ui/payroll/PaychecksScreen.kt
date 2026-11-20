@@ -82,6 +82,7 @@ import java.time.format.*
             else {
                 item { Section(r.status.label) {
                     Text(reconciliationSummary(r))
+                    if(p.notes.lineSequence().any {it.startsWith("Paystub image reviewed.")}) Text("Paystub review confirmed · Work and deposit reconciliation is separate",style=MaterialTheme.typography.bodySmall)
                     Text("Pay date: ${p.payDate?.format(dates)?:"Not entered"}")
                     Text("Reconciled requires employer hours, gross, net, confirmed deductions, pay date, dated deposits, completed work, and zero differences. Optional earnings details, notes, and references are not required.",style=MaterialTheme.typography.bodySmall)
                 } }
